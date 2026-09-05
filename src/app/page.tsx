@@ -475,13 +475,17 @@ export default function Home() {
           myadvisor<span className="brand-dot">®</span>
         </a>
         <button className="new-chat" onClick={() => newChat()} disabled={busy}>
-          <Plus size={17} /> New conversation <span>⌘ K</span>
+          <span className="new-chat-icon" aria-hidden="true">
+            <Plus size={15} />
+          </span>
+          <span className="new-chat-label">Start new chat</span>
+          <kbd>⌘ K</kbd>
         </button>
         <div className="nav-label">WORKSPACE</div>
         <nav>
           {(
             [
-              { id: "chat", label: "Conversations", icon: MessageSquare },
+              { id: "chat", label: "Chat history", icon: MessageSquare },
               { id: "bots", label: "My bots", icon: Layers3 },
               { id: "wiki", label: "Knowledge wiki", icon: BookOpen },
             ] as const
@@ -570,7 +574,7 @@ export default function Home() {
             Workspace <ChevronRight size={13} />
             <span>
               {view === "chat"
-                ? "Conversations"
+                ? "Chat history"
                 : view === "bots"
                   ? "My bots"
                   : "Knowledge wiki"}

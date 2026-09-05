@@ -125,7 +125,7 @@ test("stop generation unlocks composer and navigation", async ({ page }) => {
   await expect(page.locator(".error-banner")).toContainText("Generation stopped");
   release();
   await expect(page.getByRole("button", { name: "Choose model:" })).toBeEnabled();
-  await page.getByRole("button", { name: "New conversation" }).click();
+  await page.getByRole("button", { name: "Start new chat" }).click();
   await expect(page.locator(".message.user")).toHaveCount(0);
 });
 
@@ -193,7 +193,7 @@ test("create bot, stream chat, persist wiki and retrieve it in a new conversatio
     "Neural networks learn patterns.",
   );
   await page.getByRole("button", { name: "Close wiki entry" }).click();
-  await page.getByRole("button", { name: "New conversation" }).click();
+  await page.getByRole("button", { name: "Start new chat" }).click();
   await page
     .getByRole("textbox", { name: "Message", exact: true })
     .fill("What else about neural networks?");
