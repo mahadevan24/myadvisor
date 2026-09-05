@@ -49,6 +49,21 @@ test("model selection is searchable, persists per bot and reaches chat API", asy
   await expect(page.locator(".bot-nav.selected")).toContainText("Nova edited");
 });
 
+test("seeded bots can be deleted and stay deleted", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "My bots", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Nova", exact: true }).click();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete bot", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Nova", exact: true })).toHaveCount(0);
+  await expect(page.locator(".bot-nav")).toHaveCount(2);
+  await page.reload();
+  await page.getByRole("button", { name: "My bots", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Nova", exact: true })).toHaveCount(0);
+});
+
 test("catalog recovers from failure, empty search works, and key verification is truthful", async ({ page }) => {
   let failure = true;
   await page.route("**/api/models", async route => failure

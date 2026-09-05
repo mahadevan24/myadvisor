@@ -1213,6 +1213,30 @@ button:hover:not(:disabled) {
   background: #1c221a;
   color: #c0d0b1;
 }
+.bot-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.bot-editor-actions .primary-button {
+  flex: 1;
+}
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 15px;
+  border: 1px solid #713b3b;
+  border-radius: 6px;
+  background: #2a1919;
+  color: #f0aaaa;
+  font-size: 11px;
+}
+.danger-button:hover:not(:disabled) {
+  border-color: #a55252;
+  background: #351d1d;
+}
 .library-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

@@ -106,7 +106,9 @@ export default function Home() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bot = workspace.bots.find((b) => b.id === botId) || workspace.bots[0];
   const chat = workspace.chats.find((c) => c.id === chatId);
-  const botEntries = workspace.entries.filter((e) => e.botId === bot.id);
+  const botEntries = bot
+    ? workspace.entries.filter((e) => e.botId === bot.id)
+    : [];
   useEffect(() => {
     const controller = new AbortController();
     setModelsLoading(true);
@@ -149,12 +151,13 @@ export default function Home() {
   }
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("myadvisor.workspace.v1");
+      const saved =
+        localStorage.getItem("myadvisor.workspace.v1.guest") ||
+        localStorage.getItem("myadvisor.workspace.v1");
       if (saved) {
         const data = JSON.parse(saved);
         if (
           Array.isArray(data.bots) &&
-          data.bots.length &&
           Array.isArray(data.chats) &&
           Array.isArray(data.entries)
         )
@@ -219,7 +222,12 @@ export default function Home() {
   }, []);
   function newChat(id = botId) {
     if (busy) return;
-    setBotId(id);
+    const selectedBot = workspace.bots.find((candidate) => candidate.id === id);
+    if (!selectedBot) {
+      setView("bots");
+      return;
+    }
+    setBotId(selectedBot.id);
     setChatId(null);
     setInput("");
     setSources([]);
@@ -251,6 +259,7 @@ export default function Home() {
     stream = true,
     signal?: AbortSignal,
   ) {
+    if (!bot) throw new Error("Create a bot before starting a conversation.");
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
@@ -273,7 +282,7 @@ export default function Home() {
   }
   async function send(text = input) {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || !bot) return;
     if (trimmed.startsWith("/")) {
       const command = trimmed.slice(1).trim().toLowerCase();
       const commands: Record<string, () => void> = {
@@ -464,14 +473,42 @@ export default function Home() {
     a.click();
     URL.revokeObjectURL(a.href);
   }
-  const contextTokens = chat
+  function deleteBot(target: Bot) {
+    const conversationCount = workspace.chats.filter(
+      (candidate) => candidate.botId === target.id,
+    ).length;
+    const warning = conversationCount
+      ? `Delete ${target.name} and ${conversationCount} associated conversation${conversationCount === 1 ? "" : "s"}? This also deletes its wiki notes.`
+      : `Delete ${target.name}?`;
+    if (!window.confirm(warning)) return;
+
+    const remainingBots = workspace.bots.filter(
+      (candidate) => candidate.id !== target.id,
+    );
+    setWorkspace((current) => ({
+      ...current,
+      bots: current.bots.filter((candidate) => candidate.id !== target.id),
+      chats: current.chats.filter((candidate) => candidate.botId !== target.id),
+      entries: current.entries.filter((candidate) => candidate.botId !== target.id),
+    }));
+    if (botId === target.id) {
+      setBotId(remainingBots[0]?.id || "");
+      setChatId(null);
+      setSources([]);
+    }
+    setEditor(null);
+    if (!remainingBots.length) setView("bots");
+  }
+  const contextTokens = chat && bot
     ? estimateTokens(
         buildContext(chat, bot, workspace.entries)
           .messages.map((m) => m.content)
           .join(""),
       )
     : 0;
-  const contextLimit = models.find((model) => model.id === bot.model)?.context || 0;
+  const contextLimit = bot
+    ? models.find((model) => model.id === bot.model)?.context || 0
+    : 0;
   const contextPercent = contextLimit
     ? Math.min(100, (contextTokens / contextLimit) * 100)
     : 0;
@@ -487,7 +524,7 @@ export default function Home() {
         <button
           className="new-chat"
           onClick={() => newChat()}
-          disabled={busy}
+          disabled={busy || !bot}
           aria-label="Start new chat"
         >
           <span className="new-chat-icon" aria-hidden="true">
@@ -542,7 +579,7 @@ export default function Home() {
             disabled={busy}
             key={b.id}
             onClick={() => newChat(b.id)}
-            className={`bot-nav ${bot.id === b.id ? "selected" : ""}`}
+            className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
           >
             <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
             {b.name}
@@ -607,7 +644,7 @@ export default function Home() {
             </button>
           </div>
         </header>
-        {view === "chat" ? (
+        {view === "chat" && bot ? (
           <div className="chat-layout">
             <section className="conversation">
               <div className="conversation-toolbar">
@@ -938,6 +975,29 @@ export default function Home() {
                     ))}
             </div>
             )}
+            {view === "bots" && !workspace.bots.length && (
+              <div className="library-empty">
+                <Layers3 size={40} />
+                <h2>No bots yet.</h2>
+                <p>Create a thinking partner to start a new conversation.</p>
+                <button
+                  className="primary-button"
+                  onClick={() =>
+                    setEditor({
+                      id: uid(),
+                      name: "",
+                      description: "",
+                      instructions: "",
+                      model: "openai/gpt-4o-mini",
+                      color: "mint",
+                      symbol: "✳",
+                    })
+                  }
+                >
+                  <Plus size={16} /> Create bot
+                </button>
+              </div>
+            )}
             {view === "wiki" &&
               !workspace.entries.filter((e) =>
                 (e.title + " " + e.content)
@@ -1166,9 +1226,21 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <button className="primary-button full-width" disabled={busy}>
-              <Check size={16} /> Save bot
-            </button>
+            <div className="bot-editor-actions">
+              {workspace.bots.some((candidate) => candidate.id === editor.id) && (
+                <button
+                  type="button"
+                  className="danger-button"
+                  disabled={busy}
+                  onClick={() => deleteBot(editor)}
+                >
+                  <Trash2 size={16} /> Delete bot
+                </button>
+              )}
+              <button className="primary-button" disabled={busy}>
+                <Check size={16} /> Save bot
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -1184,9 +1256,9 @@ export default function Home() {
             {modelsError && <p role="alert">{modelsError}</p>}
             <div className="model-options">
               {models.filter(m => `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase())).map(m => (
-                <button key={m.id} className="model-option" disabled={busy} aria-pressed={m.id === (modelPicker === "editor" ? editor?.model : bot.model)} onClick={() => {
+                <button key={m.id} className="model-option" disabled={busy} aria-pressed={m.id === (modelPicker === "editor" ? editor?.model : bot?.model)} onClick={() => {
                   if (modelPicker === "editor" && editor) setEditor({ ...editor, model: m.id });
-                  else setWorkspace(w => ({ ...w, bots: w.bots.map(b => b.id === bot.id ? { ...b, model: m.id } : b) }));
+                  else if (bot) setWorkspace(w => ({ ...w, bots: w.bots.map(b => b.id === bot.id ? { ...b, model: m.id } : b) }));
                   setModelPicker(null);
                 }}>
                   <span><strong>{m.name}</strong><small>{m.id}</small></span>
