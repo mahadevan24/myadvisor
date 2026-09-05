@@ -474,7 +474,12 @@ export default function Home() {
           </span>
           myadvisor<span className="brand-dot">®</span>
         </a>
-        <button className="new-chat" onClick={() => newChat()} disabled={busy}>
+        <button
+          className="new-chat"
+          onClick={() => newChat()}
+          disabled={busy}
+          aria-label="Start new chat"
+        >
           <span className="new-chat-icon" aria-hidden="true">
             <Plus size={15} />
           </span>
