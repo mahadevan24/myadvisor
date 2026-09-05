@@ -106,32 +106,8 @@ button:hover:not(:disabled) {
   margin-top: 4px;
   margin-left: -5px;
 }
-.workspace-switch {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin: 31px 3px 23px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.workspace-switch > span:nth-child(2) {
-  flex: 1;
-}
-.workspace-switch small {
-  display: block;
-  color: #666c74;
-  font-size: 7px;
-  letter-spacing: 1px;
-  margin-top: 6px;
-}
-.workspace-avatar {
-  background: #27272d;
-  color: #bfbcca;
-  border: 1px solid #393840;
-  border-radius: 7px;
-  padding: 9px 11px;
-}
 .new-chat {
+  margin-top: 28px;
   background: var(--accent);
   border: 1px solid #d8ffc0;
   color: #202a19;
@@ -283,38 +259,6 @@ button:hover:not(:disabled) {
   margin-top: auto;
   padding-top: 22px;
 }
-.memory-note {
-  border: 1px solid #2d332b;
-  border-radius: 8px;
-  padding: 14px 12px;
-  background: linear-gradient(135deg, #20251d88, #16181a);
-  position: relative;
-}
-.little-spark {
-  color: #b7d799;
-  display: block;
-  font-size: 22px;
-  margin-bottom: 8px;
-}
-.memory-note strong {
-  font-size: 10px;
-  font-weight: 500;
-  color: #d9dfd3;
-}
-.memory-note p {
-  color: #798075;
-  line-height: 1.7;
-  font-size: 10px;
-  margin: 7px 0 12px;
-}
-.memory-note button {
-  color: #b5cd9d;
-  display: flex;
-  gap: 23px;
-  align-items: center;
-  font-size: 10px;
-  padding: 0;
-}
 .settings-link {
   display: flex;
   gap: 10px;
@@ -326,34 +270,6 @@ button:hover:not(:disabled) {
 }
 .settings-link > span {
   margin-left: auto;
-}
-.profile {
-  border-top: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 17px 3px;
-  font-size: 11px;
-}
-.profile-avatar {
-  padding: 9px 11px;
-  border-radius: 50%;
-  background: #33362f;
-  color: #c4d2b5;
-}
-.profile > div {
-  flex: 1;
-}
-.profile small {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #6d766b;
-  font-size: 9px;
-  margin-top: 6px;
-}
-.profile > svg {
-  color: #6d727b;
 }
 .main {
   min-width: 0;
@@ -1467,21 +1383,11 @@ button:hover:not(:disabled) {
   .sidebar {
     padding-top: 22px;
   }
-  .workspace-switch {
-    margin-top: 24px;
-    margin-bottom: 18px;
-  }
   .nav-label {
     margin-top: 22px;
   }
   .recent-label {
     margin-top: 19px;
-  }
-  .memory-note {
-    padding: 11px;
-  }
-  .memory-note .little-spark {
-    display: none;
   }
   .sidebar-bottom {
     padding-top: 12px;
@@ -1649,13 +1555,10 @@ button:hover:not(:disabled) {
     width: 30px;
   }
   .brand-dot,
-  .workspace-switch,
   .nav-label,
   .new-chat > span,
   .bot-nav,
   .recent-list,
-  .memory-note,
-  .profile,
   .settings-link > span {
     display: none;
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   ArrowUp,
   ArrowUpRight,
@@ -186,23 +186,24 @@ export default function Home() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat?.messages.at(-1)?.content, busy]);
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      if (modelPicker) { setModelPicker(null); return; }
+      setSettings(false);
+      setEditor(null);
+      setEntry(null);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      e.preventDefault();
+      newChat();
+      inputRef.current?.focus();
+    }
+  });
   useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (modelPicker) { setModelPicker(null); return; }
-        setSettings(false);
-        setEditor(null);
-        setEntry(null);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        newChat();
-        inputRef.current?.focus();
-      }
-    };
+    const listener = (e: KeyboardEvent) => handleKeyDown(e);
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [modelPicker, busy, botId]);
+  }, []);
   function newChat(id = botId) {
     if (busy) return;
     setBotId(id);
@@ -421,12 +422,6 @@ export default function Home() {
           </span>
           myadvisor<span className="brand-dot">®</span>
         </a>
-        <div className="workspace-switch">
-          <span className="workspace-avatar">P</span>
-          <span>
-            Personal workspace<small>MAKE ROOM FOR YOUR MIND</small>
-          </span>
-        </div>
         <button className="new-chat" onClick={() => newChat()} disabled={busy}>
           <Plus size={17} /> New conversation <span>⌘ K</span>
         </button>
@@ -511,32 +506,10 @@ export default function Home() {
           )}
         </div>
         <div className="sidebar-bottom">
-          <div className="memory-note">
-            <span className="little-spark">✧</span>
-            <strong>A mind that grows with you.</strong>
-            <p>
-              Every conversation adds a little
-              <br />
-              more to your knowledge.
-            </p>
-            <button onClick={() => setView("wiki")}>
-              Explore your wiki <ArrowUpRight size={14} />
-            </button>
-          </div>
           <button className="settings-link" onClick={() => setSettings(true)}>
             <Settings2 size={16} /> Settings{" "}
             <span className={connected ? "online-dot" : "offline-dot"} />
           </button>
-          <div className="profile">
-            <span className="profile-avatar">Y</span>
-            <div>
-              Your personal space
-              <small>
-                <span className="online-dot" />
-                {sync}
-              </small>
-            </div>
-          </div>
         </div>
       </aside>
       <main className="main">
@@ -1058,6 +1031,7 @@ export default function Home() {
                 Anonymous sync
               </button>
             </div>
+            <p className="field-help" role="status">{sync}</p>
             <p className="field-help">
               Anonymous accounts stay tied to this browser. Use Google for
               access across devices. Cloud connection merges notes; existing
