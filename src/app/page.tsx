@@ -40,7 +40,7 @@ import { authToken, connectCloud, disconnectCloud, firebaseConfigured, saveCloud
 import { readStream } from "@/lib/stream";
 import type { Model } from "@/lib/models";
 
-type View = "chat" | "bots" | "wiki";
+type View = "chat" | "history" | "bots" | "wiki";
 type CommandResult = { type: "status" } | { type: "error"; message: string };
 const uid = () => crypto.randomUUID();
 const prompts = [
@@ -225,6 +225,16 @@ export default function Home() {
     setSources([]);
     setCommandResult(null);
     setView("chat");
+    setError("");
+  }
+  function openChat(id: string) {
+    if (busy) return;
+    const selected = workspace.chats.find((c) => c.id === id);
+    if (!selected) return;
+    setChatId(selected.id);
+    setBotId(selected.botId);
+    setView("chat");
+    setSources([]);
     setError("");
   }
   function updateChat(next: Chat, saveEntry = false) {
@@ -490,7 +500,7 @@ export default function Home() {
         <nav>
           {(
             [
-              { id: "chat", label: "Chat history", icon: MessageSquare },
+              { id: "history", label: "Chat history", icon: MessageSquare },
               { id: "bots", label: "My bots", icon: Layers3 },
               { id: "wiki", label: "Knowledge wiki", icon: BookOpen },
             ] as const
@@ -498,7 +508,7 @@ export default function Home() {
             <button
               className={`nav-item ${view === n.id ? "active" : ""}`}
               key={n.id}
-              onClick={() => n.id === "chat" ? newChat() : setView(n.id)}
+              onClick={() => setView(n.id)}
             >
               <n.icon size={17} />
               {n.label}
@@ -547,12 +557,7 @@ export default function Home() {
                 disabled={busy}
                 key={c.id}
                 className={chatId === c.id ? "current" : ""}
-                onClick={() => {
-                  setChatId(c.id);
-                  setBotId(c.botId);
-                  setView("chat");
-                  setSources([]);
-                }}
+                onClick={() => openChat(c.id)}
               >
                 <MessageSquare size={13} />
                 <span>{c.title}</span>
@@ -579,7 +584,9 @@ export default function Home() {
             Workspace <ChevronRight size={13} />
             <span>
               {view === "chat"
-                ? "Chat history"
+                ? chat?.title || "New conversation"
+                : view === "history"
+                  ? "Chat history"
                 : view === "bots"
                   ? "My bots"
                   : "Knowledge wiki"}
@@ -822,12 +829,16 @@ export default function Home() {
             <div className="library-heading">
               <div>
                 <h1>
-                  {view === "bots"
+                  {view === "history"
+                    ? "Every conversation, in one place."
+                    : view === "bots"
                     ? "A mind for every mood."
                     : "Your conversations, connected."}
                 </h1>
                 <p>
-                  {view === "bots"
+                  {view === "history"
+                    ? "Pick up a thought where you left it."
+                    : view === "bots"
                     ? "Give your thinking partners a personality and a purpose."
                     : "A living library of ideas, built one conversation at a time."}
                 </p>
@@ -861,6 +872,21 @@ export default function Home() {
                 />
               </label>
             )}
+            {view === "history" ? (
+              <div className="library-grid history-grid">
+                {workspace.chats.length ? workspace.chats.map((c) => (
+                  <button className="entry-card history-card" key={c.id} onClick={() => openChat(c.id)}>
+                    <MessageSquare size={21} />
+                    <span className="entry-bot">{workspace.bots.find((b) => b.id === c.botId)?.name} · CONVERSATION</span>
+                    <h2>{c.title}</h2>
+                    <p>{c.messages.at(-1)?.content?.slice(0, 170) || "No messages yet."}</p>
+                    <footer>{new Date(c.updatedAt).toLocaleDateString()} <ArrowUpRight size={16} /></footer>
+                  </button>
+                )) : (
+                  <div className="library-empty"><MessageSquare size={40} /><h2>No conversations yet.</h2><p>Start a new chat and your history will appear here.</p></div>
+                )}
+              </div>
+            ) : (
             <div className="library-grid">
               {view === "bots"
                 ? workspace.bots.map((b) => (
@@ -911,6 +937,7 @@ export default function Home() {
                       </button>
                     ))}
             </div>
+            )}
             {view === "wiki" &&
               !workspace.entries.filter((e) =>
                 (e.title + " " + e.content)
