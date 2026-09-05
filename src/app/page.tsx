@@ -498,7 +498,7 @@ export default function Home() {
             <button
               className={`nav-item ${view === n.id ? "active" : ""}`}
               key={n.id}
-              onClick={() => setView(n.id)}
+              onClick={() => n.id === "chat" ? newChat() : setView(n.id)}
             >
               <n.icon size={17} />
               {n.label}

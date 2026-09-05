@@ -129,6 +129,28 @@ test("stop generation unlocks composer and navigation", async ({ page }) => {
   await expect(page.locator(".message.user")).toHaveCount(0);
 });
 
+test("workspace pages scroll at desktop zoom and chat history starts fresh", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "My bots", exact: true }).click();
+  const library = page.locator(".library");
+  await expect(library).toBeVisible();
+  expect(await library.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await library.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  expect(await library.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Start a conversation", exact: true }).first().click();
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("Unsaved draft");
+  await page.getByRole("button", { name: "Chat history", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue("");
+  await expect(page.locator(".welcome")).toBeVisible();
+  expect(await page.locator(".welcome").evaluate((element) => element.scrollTop)).toBe(0);
+  const firstWelcomeElement = await page.locator(".orb-wrap").boundingBox();
+  const welcomeBox = await page.locator(".welcome").boundingBox();
+  expect(firstWelcomeElement!.y).toBeGreaterThanOrEqual(welcomeBox!.y);
+});
+
 test("model picker stays within a narrow mobile viewport", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto("/");
