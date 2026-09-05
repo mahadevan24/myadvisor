@@ -47,3 +47,26 @@ test("verified keys are encrypted before storage and never returned", async (t) 
   assert.ok(saved);
   assert.ok(!JSON.stringify(saved).includes("sk-or-v1-test-key"));
 });
+
+test("missing Firestore credentials return an actionable storage error", async (t) => {
+  const previous = process.env.OPENROUTER_KEY_ENCRYPTION_KEY;
+  process.env.OPENROUTER_KEY_ENCRYPTION_KEY = Buffer.alloc(32, 1).toString("base64");
+  t.after(() => {
+    if (previous === undefined) delete process.env.OPENROUTER_KEY_ENCRYPTION_KEY;
+    else process.env.OPENROUTER_KEY_ENCRYPTION_KEY = previous;
+  });
+  t.mock.method(adminAuth, "verifyIdToken", async () => ({ uid: "test-user" }));
+  t.mock.method(adminDb, "doc", () => ({
+    set: async () => {
+      throw Object.assign(new Error("Could not load the default credentials"), {
+        code: "app/invalid-credential",
+      });
+    },
+  }));
+  t.mock.method(globalThis, "fetch", async () => Response.json({ data: {} }));
+
+  const response = await PUT(request());
+
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /Firebase Admin credentials/);
+});

@@ -5,6 +5,18 @@ export const runtime = "nodejs";
 const schema = z.object({ key: z.string().trim().min(15).max(300) });
 const unauthorized = () => Response.json({ error: "Sign in to manage your API key." }, { status: 401 });
 const unavailable = () => Response.json({ error: "Server authentication is unavailable. Configure Firebase Admin credentials on the server, then restart the app." }, { status: 503 });
+const storageUnavailable = () => Response.json({ error: "Secure key storage is unavailable. Configure Firebase Admin credentials on the server, then redeploy the app." }, { status: 503 });
+
+function isAdminCredentialError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const code = (error as Error & { code?: string }).code ?? "";
+  return code.startsWith("app/")
+    || code === "auth/internal-error"
+    || code === "auth/insufficient-permission"
+    || code === "firestore/unauthenticated"
+    || code === "firestore/permission-denied"
+    || /credential|could not load the default credentials/i.test(error.message);
+}
 
 export async function GET(req: Request) {
   try {
@@ -38,6 +50,7 @@ export async function PUT(req: Request) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") return unauthorized();
     console.error("[api/connection] save failed", { stage, name: error instanceof Error ? error.name : "UnknownError" });
     if (stage === "verification") return Response.json({ error: "The server could not reach OpenRouter to verify your key. Try again shortly." }, { status: 502 });
+    if (stage === "storage" && isAdminCredentialError(error)) return storageUnavailable();
     return Response.json({ error: "Could not securely save the API key." }, { status: 500 });
   }
 }
