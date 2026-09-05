@@ -643,12 +643,6 @@ export default function Home() {
                     Big ideas start with
                     <br />a little <span>conversation.</span>
                   </h1>
-                  <p>
-                    I’m {bot.name}, your thinking partner. Let’s connect the
-                    dots,
-                    <br className="desktop-break" /> explore the unknown, or
-                    just see where this goes.
-                  </p>
                   <div className="prompt-grid">
                     {prompts.map((p) => (
                       <button

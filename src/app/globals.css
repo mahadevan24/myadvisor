@@ -9,9 +9,35 @@
   --muted: #777d87;
   --text: #eeeef0;
   --accent: #c1f99a;
+  --scrollbar-track: #101417;
+  --scrollbar-thumb: #394a35;
+  --scrollbar-thumb-hover: #668052;
 }
 * {
   box-sizing: border-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--scrollbar-thumb), #29352a);
+  border: 2px solid var(--scrollbar-track);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
 }
 body {
   margin: 0;
@@ -518,13 +544,6 @@ button:hover:not(:disabled) {
 .welcome h1 > span {
   color: #c5e9a7;
 }
-.welcome > p {
-  text-align: center;
-  font-size: 12px;
-  color: #858b93;
-  line-height: 1.85;
-  margin: 18px 0 28px;
-}
 .prompt-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -975,8 +994,6 @@ button:hover:not(:disabled) {
   flex: 1;
   overflow: auto;
   padding: 24px 35px;
-  scrollbar-width: thin;
-  scrollbar-color: #343934 transparent;
 }
 .message {
   display: flex;
@@ -1459,9 +1476,6 @@ button:hover:not(:disabled) {
   .welcome h1 {
     font-size: 50px;
   }
-  .welcome > p {
-    font-size: 13px;
-  }
   .prompt-grid {
     max-width: 590px;
   }
@@ -1526,9 +1540,6 @@ button:hover:not(:disabled) {
   }
   .welcome h1 {
     font-size: 38px;
-  }
-  .welcome > p {
-    margin: 15px 0 23px;
   }
   .welcome-kicker {
     margin-bottom: 12px;
@@ -1749,9 +1760,6 @@ button:hover:not(:disabled) {
   .welcome h1 {
     font-size: 31px;
     letter-spacing: -1px;
-  }
-  .welcome > p {
-    font-size: 11px;
   }
   .welcome-kicker {
     font-size: 7px;
