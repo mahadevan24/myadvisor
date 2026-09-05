@@ -8,5 +8,9 @@ service cloud.firestore {
         && request.resource.data.data is map
         && request.resource.data.updatedAt is number;
     }
+    // API keys are written only by the Firebase Admin SDK on the server.
+    match /users/{uid}/private/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

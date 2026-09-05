@@ -1,11 +1,14 @@
 import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
+  onAuthStateChanged,
+  signOut,
   signInAnonymously,
   GoogleAuthProvider,
   linkWithPopup,
   signInWithPopup,
 } from "firebase/auth";
+import type { User } from "firebase/auth";
 import { doc, getDoc, getFirestore, setDoc } from "firebase/firestore";
 import type { Workspace } from "./memory";
 const config = {
@@ -41,6 +44,20 @@ export async function connectCloud(google = false) {
     uid,
     workspace: snap.exists() ? (snap.data().data as Workspace) : null,
   };
+}
+export function watchAuth(callback: (user: User | null) => void) {
+  if (!firebaseConfigured) return () => {};
+  return onAuthStateChanged(services().auth, callback);
+}
+export async function authToken() {
+  const { auth } = services();
+  await auth.authStateReady();
+  if (!auth.currentUser) throw new Error("Sign in to continue.");
+  return auth.currentUser.getIdToken();
+}
+export async function disconnectCloud() {
+  const { auth } = services();
+  await signOut(auth);
 }
 export async function saveCloud(uid: string, workspace: Workspace) {
   const { db } = services();
