@@ -11,6 +11,12 @@ export type Bot = {
   model: string;
   color: string;
   symbol: string;
+  quickPrompts?: QuickPrompt[];
+};
+export type QuickPrompt = {
+  title: string;
+  text: string;
+  prompt: string;
 };
 export type Chat = {
   id: string;

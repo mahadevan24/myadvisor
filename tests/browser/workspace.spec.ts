@@ -95,8 +95,8 @@ test("wiki search, source navigation, deletion and backup download work", async 
   await page.route("**/api/chat", route => route.fulfill({ contentType: "text/event-stream", body: sse }));
   await page.goto("/");
   await connect(page);
-  await page.getByRole("button", { name: /Think bigger/ }).click();
-  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(/Help me explore/);
+  await page.getByRole("button", { name: /Ask Nova/ }).click();
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(/Introduce yourself as Nova/);
   await page.getByRole("textbox", { name: "Message", exact: true }).fill("Neural network notes");
   await page.keyboard.press("Enter");
   await expect(page.locator(".message.assistant")).toContainText("Start with a small experiment.");

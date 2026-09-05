@@ -29,6 +29,7 @@ import {
   Bot,
   Chat,
   Entry,
+  QuickPrompt,
   Workspace,
   buildContext,
   estimateTokens,
@@ -43,35 +44,21 @@ import type { Model } from "@/lib/models";
 type View = "chat" | "history" | "bots" | "wiki";
 type CommandResult = { type: "status" } | { type: "error"; message: string };
 const uid = () => crypto.randomUUID();
-const prompts = [
-  {
-    icon: "✧",
-    title: "Think bigger",
-    text: "Help me explore an idea",
-    prompt:
-      "Help me explore a new idea. Ask me one interesting question to get started.",
-  },
-  {
-    icon: "⌘",
-    title: "Build something",
-    text: "Untangle a tricky problem",
-    prompt:
-      "Help me untangle a technical problem. Ask me what I am working on.",
-  },
-  {
-    icon: "◎",
-    title: "Go down the rabbit hole",
-    text: "Learn something unexpected",
-    prompt: "Teach me a surprising idea in science with an intuitive example.",
-  },
-  {
-    icon: "↗",
-    title: "Find my next move",
-    text: "Turn thoughts into a plan",
-    prompt:
-      "Help me turn my thoughts into a concrete plan. Ask what I want to achieve.",
-  },
-];
+const promptIcons = ["✧", "⌘", "◎", "↗"];
+const fallbackQuickPrompts = (bot: Bot): QuickPrompt[] => {
+  if (/elon\s*musk/i.test(bot.name)) return [
+    { title: "First principles", text: "Strip a problem to fundamentals", prompt: "Help me analyze a difficult problem from first principles. Challenge every assumption and identify the physical or economic constraints." },
+    { title: "Make it 10× better", text: "Find the nonlinear improvement", prompt: "Take an idea I am working on and show me how to make it radically—not incrementally—better." },
+    { title: "Delete the process", text: "Simplify before optimizing", prompt: "Review a process with me using the algorithm: question requirements, delete, simplify, accelerate, then automate." },
+    { title: "Build the future", text: "Turn an ambitious idea into action", prompt: "Help me turn an ambitious, high-risk idea into a concrete plan with the fastest useful first experiment." },
+  ];
+  return [
+    { title: `Ask ${bot.name}`, text: bot.description, prompt: `Introduce yourself as ${bot.name}, then ask what I would like your help with.` },
+    { title: "Get perspective", text: "See this through a new lens", prompt: `Help me examine a decision using your perspective: ${bot.description}` },
+    { title: "Solve a problem", text: "Work through something difficult", prompt: "Help me work through a difficult problem. Start by asking for the essential context." },
+    { title: "Make a plan", text: "Turn an idea into next steps", prompt: "Help me turn an idea into a short, concrete plan with a useful first step." },
+  ];
+};
 export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
   const [ready, setReady] = useState(false);
@@ -102,6 +89,8 @@ export default function Home() {
   const [sources, setSources] = useState<Entry[]>([]);
   const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const promptAttempts = useRef(new Set<string>());
+  const [promptBusy, setPromptBusy] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bot = workspace.bots.find((b) => b.id === botId) || workspace.bots[0];
@@ -133,6 +122,22 @@ export default function Home() {
       .catch(e => { if (!controller.signal.aborted) setConnection({ status: "error", message: e.message }); });
     return () => controller.abort();
   }, [cloudUid]);
+  useEffect(() => {
+    if (!connected || !cloudUid) return;
+    const target = workspace.bots.find((candidate) =>
+      !["nova", "cipher", "echo"].includes(candidate.id) &&
+      !candidate.quickPrompts?.length &&
+      !promptAttempts.current.has(candidate.id),
+    );
+    if (!target) return;
+    promptAttempts.current.add(target.id);
+    void generateQuickPrompts(target)
+      .catch(() => fallbackQuickPrompts(target))
+      .then((quickPrompts) => setWorkspace((current) => ({
+        ...current,
+        bots: current.bots.map((candidate) => candidate.id === target.id ? { ...candidate, quickPrompts } : candidate),
+      })));
+  }, [connected, cloudUid, workspace.bots]);
   useEffect(() => watchAuth(user => {
     setAccount(user ? { label: user.email || (user.isAnonymous ? "Anonymous account" : "Signed-in account"), anonymous: user.isAnonymous } : null);
     if (!user) {
@@ -148,6 +153,32 @@ export default function Home() {
   function openModels(target: "chat" | "editor") {
     setModelSearch("");
     setModelPicker(target);
+  }
+  async function generateQuickPrompts(target: Bot): Promise<QuickPrompt[]> {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await authToken()}` },
+      body: JSON.stringify({
+        model: target.model,
+        stream: false,
+        max_tokens: 700,
+        messages: [
+          { role: "system", content: "Generate exactly four useful conversation starters for the bot described by the user. Match its domain and personality. Return only a JSON array. Each item must have title (2-5 words), text (3-8 words), and prompt (one actionable user message). Avoid generic prompts and do not mention this task." },
+          { role: "user", content: JSON.stringify({ name: target.name, description: target.description, instructions: target.instructions }) },
+        ],
+      }),
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "Could not generate quick prompts.");
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    const match = content.match(/\[[\s\S]*\]/);
+    const parsed = match ? JSON.parse(match[0]) : null;
+    if (!Array.isArray(parsed) || parsed.length !== 4) throw new Error("The model returned invalid quick prompts.");
+    return parsed.map((item) => ({
+      title: String(item.title || "").slice(0, 40),
+      text: String(item.text || "").slice(0, 80),
+      prompt: String(item.prompt || "").slice(0, 500),
+    })).filter((item) => item.title && item.text && item.prompt);
   }
   useEffect(() => {
     try {
@@ -688,7 +719,7 @@ export default function Home() {
                     <br />a little <span>conversation.</span>
                   </h1>
                   <div className="prompt-grid">
-                    {prompts.map((p) => (
+                    {(bot.quickPrompts?.length ? bot.quickPrompts : fallbackQuickPrompts(bot)).map((p, index) => (
                       <button
                         key={p.title}
                         onClick={() => {
@@ -696,7 +727,7 @@ export default function Home() {
                           inputRef.current?.focus();
                         }}
                       >
-                        <span className="prompt-icon">{p.icon}</span>
+                        <span className="prompt-icon">{promptIcons[index]}</span>
                         <strong>{p.title}</strong>
                         <span>{p.text}</span>
                         <ArrowUpRight size={15} />
@@ -1133,12 +1164,22 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="bot-title"
             onClick={(e) => e.stopPropagation()}
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
+              setPromptBusy(true);
+              setError("");
+              let quickPrompts = editor.quickPrompts;
+              try {
+                quickPrompts = await generateQuickPrompts(editor);
+              } catch (cause) {
+                quickPrompts = fallbackQuickPrompts(editor);
+                setError(cause instanceof Error ? `${cause.message} Saved with tailored offline prompts.` : "Saved with tailored offline prompts.");
+              }
               setWorkspace((w) => ({
                 ...w,
-                bots: [...w.bots.filter((b) => b.id !== editor.id), editor],
+                bots: [...w.bots.filter((b) => b.id !== editor.id), { ...editor, quickPrompts }],
               }));
+              setPromptBusy(false);
               setEditor(null);
             }}
           >
@@ -1237,8 +1278,8 @@ export default function Home() {
                   <Trash2 size={16} /> Delete bot
                 </button>
               )}
-              <button className="primary-button" disabled={busy}>
-                <Check size={16} /> Save bot
+              <button className="primary-button" disabled={busy || promptBusy}>
+                <Check size={16} /> {promptBusy ? "Creating prompts…" : "Save bot"}
               </button>
             </div>
           </form>
