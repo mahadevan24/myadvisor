@@ -1889,3 +1889,9 @@ button:hover:not(:disabled) {
     transition: none !important;
   }
 }
+
+.welcome .orb-wrap,
+.welcome .welcome-kicker,
+.welcome h1 {
+  display: none;
+}
