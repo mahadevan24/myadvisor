@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getOpenRouterKey, requireUser } from "@/lib/firebase-admin";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 const schema = z.object({
@@ -16,11 +17,20 @@ const schema = z.object({
   max_tokens: z.number().int().min(64).max(4096).default(2048),
 });
 export async function POST(req: Request) {
-  const key = req.headers.get("authorization");
-  if (!key?.startsWith("Bearer ") || key.length < 15)
+  let uid: string;
+  try {
+    ({ uid } = await requireUser(req));
+  } catch {
     return Response.json(
-      { error: "Connect your OpenRouter API key in Settings." },
+      { error: "Sign in to continue." },
       { status: 401 },
+    );
+  }
+  const key = await getOpenRouterKey(uid);
+  if (!key)
+    return Response.json(
+      { error: "Save your OpenRouter API key in Settings." },
+      { status: 403 },
     );
   if (Number(req.headers.get("content-length") || 0) > 180000)
     return Response.json({ error: "Request too large." }, { status: 413 });
@@ -36,7 +46,7 @@ export async function POST(req: Request) {
       {
         method: "POST",
         headers: {
-          Authorization: key,
+          Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
           "X-Title": "MyAdvisor",
         },

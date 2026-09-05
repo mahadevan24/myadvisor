@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title>MyAdvisor</title>
+  <rect width="32" height="32" rx="9" fill="#c4ff9b"/>
+  <g fill="none" stroke="#152010" stroke-linecap="round" stroke-width="2.4">
+    <path d="M8 17.5v-3"/>
+    <path d="M12 20v-8"/>
+    <path d="M16 22V10"/>
+    <path d="M20 20v-8"/>
+    <path d="M24 17.5v-3"/>
+  </g>
+</svg>

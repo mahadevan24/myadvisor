@@ -1,20 +1,46 @@
+import { z } from "zod";
+import { deleteOpenRouterKey, getOpenRouterKey, requireUser, saveOpenRouterKey } from "@/lib/firebase-admin";
+
 export const runtime = "nodejs";
+const schema = z.object({ key: z.string().trim().min(15).max(300) });
+const unauthorized = () => Response.json({ error: "Sign in to manage your API key." }, { status: 401 });
+
 export async function GET(req: Request) {
-  const authorization = req.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ") || authorization.length < 15)
-    return Response.json({ error: "Enter a valid OpenRouter API key." }, { status: 401 });
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/key", {
-      headers: { Authorization: authorization }, cache: "no-store",
+    const { uid } = await requireUser(req);
+    return Response.json({ connected: Boolean(await getOpenRouterKey(uid)) }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") return unauthorized();
+    return Response.json({ error: "Could not read API key status." }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const { uid } = await requireUser(req);
+    const parsed = schema.safeParse(await req.json());
+    if (!parsed.success) return Response.json({ error: "Enter a valid OpenRouter API key." }, { status: 400 });
+    const verification = await fetch("https://openrouter.ai/api/v1/key", {
+      headers: { Authorization: `Bearer ${parsed.data.key}` }, cache: "no-store",
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(15000)]),
     });
-    if (!res.ok) return Response.json({ error: res.status === 401 || res.status === 403
-      ? "OpenRouter rejected this API key. Check it in Settings."
-      : "Could not verify your key. Try again shortly." }, { status: res.status });
-    const data = await res.json();
-    if (!data.data) throw new Error("Invalid response");
-    return Response.json({ connected: true }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
-    return Response.json({ error: "Could not reach OpenRouter to verify your key." }, { status: 502 });
+    if (!verification.ok) return Response.json({ error: verification.status === 401 || verification.status === 403
+      ? "OpenRouter rejected this API key." : "Could not verify your key. Try again shortly." }, { status: verification.status });
+    await saveOpenRouterKey(uid, parsed.data.key);
+    return Response.json({ connected: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") return unauthorized();
+    return Response.json({ error: "Could not securely save the API key." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { uid } = await requireUser(req);
+    await deleteOpenRouterKey(uid);
+    return new Response(null, { status: 204 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") return unauthorized();
+    return Response.json({ error: "Could not remove the API key." }, { status: 500 });
   }
 }
