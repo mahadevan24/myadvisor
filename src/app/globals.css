@@ -544,6 +544,48 @@ button:hover:not(:disabled) {
 .composer-area {
   padding: 0 30px 18px;
 }
+.command-status {
+  border: 1px solid #343b31;
+  border-radius: 9px;
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  background: linear-gradient(115deg, #1c2219, #141816);
+}
+.command-status-heading,
+.command-status-values {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.command-status-heading {
+  gap: 8px;
+  color: #b8d59a;
+  margin-bottom: 11px;
+}
+.command-status-heading strong {
+  margin-right: auto;
+  font-size: 10px;
+  font-weight: 600;
+}
+.command-status-heading button {
+  color: #778071;
+  display: grid;
+  place-items: center;
+}
+.command-status-values {
+  color: #87927d;
+  font-size: 9px;
+  margin-top: 8px;
+}
+.command-status small {
+  display: block;
+  color: #b8cba2;
+  font-size: 8px;
+  margin-top: 9px;
+}
+.command-error {
+  margin-bottom: 10px;
+}
 .composer {
   border: 1px solid #383e40;
   border-radius: 11px;

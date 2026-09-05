@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";

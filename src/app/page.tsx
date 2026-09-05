@@ -9,7 +9,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Command,
   Download,
   ExternalLink,
   KeyRound,
@@ -23,7 +22,6 @@ import {
   Square,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -38,11 +36,12 @@ import {
   makeEntry,
   needsCompaction,
 } from "@/lib/memory";
-import { connectCloud, firebaseConfigured, saveCloud } from "@/lib/firebase";
+import { authToken, connectCloud, disconnectCloud, firebaseConfigured, saveCloud, watchAuth } from "@/lib/firebase";
 import { readStream } from "@/lib/stream";
 import type { Model } from "@/lib/models";
 
 type View = "chat" | "bots" | "wiki";
+type CommandResult = { type: "status" } | { type: "error"; message: string };
 const uid = () => crypto.randomUUID();
 const prompts = [
   {
@@ -81,9 +80,8 @@ export default function Home() {
   const [chatId, setChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [key, setKey] = useState("");
-  const [connection, setConnection] = useState<{ key: string; status: "checking" | "connected" | "error"; message?: string }>({ key: "", status: "checking" });
-  const [connectionRetry, setConnectionRetry] = useState(0);
-  const connected = !!key && connection.key === key && connection.status === "connected";
+  const [connection, setConnection] = useState<{ status: "idle" | "checking" | "connected" | "error"; message?: string }>({ status: "idle" });
+  const connected = connection.status === "connected";
   const [models, setModels] = useState<Model[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState("");
@@ -100,7 +98,9 @@ export default function Home() {
   const [cloudUid, setCloudUid] = useState("");
   const [sync, setSync] = useState("Local workspace");
   const [cloudBusy, setCloudBusy] = useState(false);
+  const [account, setAccount] = useState<{ label: string; anonymous: boolean } | null>(null);
   const [sources, setSources] = useState<Entry[]>([]);
+  const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -119,17 +119,30 @@ export default function Home() {
     return () => controller.abort();
   }, [modelsRetry]);
   useEffect(() => {
-    if (!key) return;
+    if (!cloudUid) {
+      setConnection({ status: "idle" });
+      return;
+    }
     const controller = new AbortController();
-    setConnection({ key, status: "checking" });
-    const timer = setTimeout(() => {
-      fetch("/api/connection", { headers: { Authorization: `Bearer ${key}` }, signal: controller.signal })
-        .then(async res => { const data = await res.json(); if (!res.ok) throw new Error(data.error); })
-        .then(() => { if (!controller.signal.aborted) setConnection({ key, status: "connected" }); })
-        .catch(e => { if (!controller.signal.aborted) setConnection({ key, status: "error", message: e.message }); });
-    }, 500);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [key, connectionRetry]);
+    setConnection({ status: "checking" });
+    authToken().then(token => fetch("/api/connection", { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }))
+      .then(async res => { const data = await res.json(); if (!res.ok) throw new Error(data.error); return data; })
+      .then(data => { if (!controller.signal.aborted) setConnection({ status: data.connected ? "connected" : "idle" }); })
+      .catch(e => { if (!controller.signal.aborted) setConnection({ status: "error", message: e.message }); });
+    return () => controller.abort();
+  }, [cloudUid]);
+  useEffect(() => watchAuth(user => {
+    setAccount(user ? { label: user.email || (user.isAnonymous ? "Anonymous account" : "Signed-in account"), anonymous: user.isAnonymous } : null);
+    if (!user) {
+      setCloudUid("");
+      return;
+    }
+    void connectCloud(false).then(({ uid, workspace: saved }) => {
+      setWorkspace(saved || initialWorkspace);
+      setCloudUid(uid);
+      setSync("Cloud connected");
+    }).catch(() => setSync("Cloud connection failed"));
+  }), []);
   function openModels(target: "chat" | "editor") {
     setModelSearch("");
     setModelPicker(target);
@@ -157,7 +170,7 @@ export default function Home() {
     const persist = () => {
       try {
         localStorage.setItem(
-          "myadvisor.workspace.v1",
+          `myadvisor.workspace.v1.${cloudUid || "guest"}`,
           JSON.stringify(workspace),
         );
       } catch {
@@ -210,6 +223,7 @@ export default function Home() {
     setChatId(null);
     setInput("");
     setSources([]);
+    setCommandResult(null);
     setView("chat");
     setError("");
   }
@@ -231,7 +245,7 @@ export default function Home() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${await authToken()}`,
       },
       body: JSON.stringify({
         model: bot.model,
@@ -248,10 +262,29 @@ export default function Home() {
     return res;
   }
   async function send(text = input) {
-    if (!text.trim() || busy) return;
-    if (!key.trim()) {
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
+    if (trimmed.startsWith("/")) {
+      const command = trimmed.slice(1).trim().toLowerCase();
+      const commands: Record<string, () => void> = {
+        status: () => setCommandResult({ type: "status" }),
+      };
+      setInput("");
+      setError("");
+      (commands[command] || (() => setCommandResult({
+        type: "error",
+        message: `Unknown command: /${command || ""}`,
+      })))();
+      return;
+    }
+    if (!cloudUid) {
       setSettings(true);
-      setError("Add your OpenRouter key to start a conversation.");
+      setError("Sign in before starting a conversation.");
+      return;
+    }
+    if (!connected) {
+      setSettings(true);
+      setError("Save your OpenRouter key to start a conversation.");
       return;
     }
     const controller = new AbortController();
@@ -266,13 +299,13 @@ export default function Home() {
       : {
           id: uid(),
           botId: bot.id,
-          title: text.trim().slice(0, 65),
+          title: trimmed.slice(0, 65),
           messages: [],
           summary: "",
           compactedCount: 0,
           updatedAt: Date.now(),
         };
-    current.messages.push({ id: uid(), role: "user", content: text.trim() });
+    current.messages.push({ id: uid(), role: "user", content: trimmed });
     setChatId(current.id);
     updateChat(current);
     try {
@@ -365,28 +398,7 @@ export default function Home() {
     setError("");
     try {
       const connected = await connectCloud(google);
-      if (connected.workspace) {
-        setWorkspace((local) => ({
-          bots: [
-            ...connected.workspace!.bots,
-            ...local.bots.filter(
-              (b) => !connected.workspace!.bots.some((c) => c.id === b.id),
-            ),
-          ],
-          chats: [
-            ...connected.workspace!.chats,
-            ...local.chats.filter(
-              (c) => !connected.workspace!.chats.some((d) => d.id === c.id),
-            ),
-          ],
-          entries: [
-            ...connected.workspace!.entries,
-            ...local.entries.filter(
-              (e) => !connected.workspace!.entries.some((d) => d.id === e.id),
-            ),
-          ],
-        }));
-      }
+      setWorkspace(connected.workspace || initialWorkspace);
       setCloudUid(connected.uid);
       setSync("Cloud connected");
     } catch (e) {
@@ -394,6 +406,36 @@ export default function Home() {
     } finally {
       setCloudBusy(false);
     }
+  }
+  async function saveKey() {
+    if (!key.trim()) return;
+    setCloudBusy(true);
+    setConnection({ status: "checking" });
+    setError("");
+    try {
+      const token = await authToken();
+      const response = await fetch("/api/connection", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ key }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setKey("");
+      setConnection({ status: "connected" });
+    } catch (e) {
+      setConnection({ status: "error", message: e instanceof Error ? e.message : "Could not save key." });
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+  async function logout() {
+    await disconnectCloud();
+    setCloudUid("");
+    setWorkspace(initialWorkspace);
+    setChatId(null);
+    setConnection({ status: "idle" });
+    setSync("Local workspace");
   }
   function exportData() {
     const a = document.createElement("a");
@@ -412,6 +454,10 @@ export default function Home() {
           .messages.map((m) => m.content)
           .join(""),
       )
+    : 0;
+  const contextLimit = models.find((model) => model.id === bot.model)?.context || 0;
+  const contextPercent = contextLimit
+    ? Math.min(100, (contextTokens / contextLimit) * 100)
     : 0;
   return (
     <div className="app-shell">
@@ -534,7 +580,7 @@ export default function Home() {
               onClick={() => setSettings(true)}
             >
               <span className={connected ? "online-dot" : "offline-dot"} />
-              {connected ? "API key connected" : !key ? "Connect API key" : connection.key === key && connection.status === "error" ? "Check API key" : "Checking API key…"}
+              {connected ? "API key secured" : connection.status === "checking" ? "Checking API key…" : "Connect API key"}
               <ArrowUpRight size={13} />
             </button>
           </div>
@@ -655,6 +701,39 @@ export default function Home() {
                 </div>
               )}
               <div className="composer-area">
+                {commandResult?.type === "status" && (
+                  <section className="command-status" role="status" aria-label="Context window status">
+                    <div className="command-status-heading">
+                      <span className="online-dot" />
+                      <strong>Context window</strong>
+                      <button aria-label="Dismiss status" onClick={() => setCommandResult(null)}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="context-meter" aria-hidden="true">
+                      <span style={{ width: `${contextPercent}%` }} />
+                    </div>
+                    <div className="command-status-values">
+                      <span>{contextTokens.toLocaleString()} tokens used</span>
+                      <span>
+                        {contextLimit
+                          ? `${Math.max(0, contextLimit - contextTokens).toLocaleString()} left of ${contextLimit.toLocaleString()}`
+                          : "Context limit unavailable"}
+                      </span>
+                    </div>
+                    {!!chat?.compactedCount && (
+                      <small>{chat.compactedCount} messages compacted into memory</small>
+                    )}
+                  </section>
+                )}
+                {commandResult?.type === "error" && (
+                  <div role="alert" className="error-banner command-error">
+                    {commandResult.message}
+                    <button aria-label="Dismiss command message" onClick={() => setCommandResult(null)}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
                 {error && !settings && (
                   <div role="alert" className="error-banner">
                     {error}
@@ -727,36 +806,6 @@ export default function Home() {
                 </div>
               </div>
             </section>
-            <aside className="knowledge-panel">
-              <div className="context-card">
-                <div>
-                  <Zap size={15} />
-                  <strong>Less tokens. More thought.</strong>
-                  <span className="online-dot" />
-                </div>
-                <p>
-                  Relevant memories, not your entire history.
-                  <br />A lighter context for every conversation.
-                </p>
-                <div className="context-meter">
-                  <span
-                    style={{ width: `${Math.min(100, contextTokens / 85)}%` }}
-                  />
-                </div>
-                <footer>
-                  <span>Context window</span>
-                  <span>~{contextTokens.toLocaleString()} tokens</span>
-                </footer>
-                {!!chat?.compactedCount && (
-                  <small>
-                    {chat.compactedCount} messages compacted into memory
-                  </small>
-                )}
-              </div>
-              <div className="panel-footer">
-                <ShieldCheck size={13} /> Built around your privacy.
-              </div>
-            </aside>
           </div>
         ) : (
           <section className="library">
@@ -900,7 +949,7 @@ export default function Home() {
               <Settings2 size={16} /> YOUR WORKSPACE
             </div>
             <h2 id="settings-title">Make yourself at home.</h2>
-            <p>Bring your key. Keep your conversations yours.</p>
+            <p>Each account gets its own private workspace and API key.</p>
             {error && (
               <div role="alert" className="error-banner">
                 {error}
@@ -914,17 +963,19 @@ export default function Home() {
                 placeholder="sk-or-v1-…"
                 value={key}
                 onChange={(e) => setKey(e.target.value.trim())}
+                disabled={!cloudUid || cloudBusy}
               />
             </label>
             <p className="field-help">
-              <KeyRound size={13} /> Held in memory for this tab. Never saved to
-              Firebase or browser storage. Sent through the local server only to
-              OpenRouter.
+              <KeyRound size={13} /> Encrypted on the server before it is stored
+              in a Firebase document that client apps cannot read.
             </p>
-            {key && <div className="field-help" role="status">
-              {connected ? "Key verified by OpenRouter. Model usage depends on your credits and account settings." : connection.key === key && connection.status === "error" ? connection.message : "Verifying with OpenRouter…"}
-              {connection.key === key && connection.status === "error" && <button className="text-link" onClick={() => setConnectionRetry(n => n + 1)}>Retry verification</button>}
-            </div>}
+            <button className="secondary-button" disabled={!cloudUid || !key || cloudBusy} onClick={() => void saveKey()}>
+              <ShieldCheck size={15} /> Verify and securely save key
+            </button>
+            <div className="field-help" role="status">
+              {connected ? "A verified key is saved for this account." : connection.status === "checking" ? "Checking your saved key…" : connection.message || (cloudUid ? "No key saved yet." : "Sign in before saving a key.")}
+            </div>
             <a
               className="text-link"
               href="https://openrouter.ai/settings/keys"
@@ -934,12 +985,10 @@ export default function Home() {
               Get an OpenRouter key <ExternalLink size={13} />
             </a>
             <div className="settings-divider" />
-            <h3>
-              Cloud workspace <span className="tiny-tag">OPTIONAL</span>
-            </h3>
+            <h3>User account</h3>
             <p className="field-help">
               {firebaseConfigured
-                ? "Firebase is configured. Connect to sync this workspace."
+                ? account ? `Signed in as ${account.label}.` : "Sign in to keep your workspace and key separate from other users."
                 : "Running locally. Add Firebase environment variables to enable cloud sync."}
             </p>
             <div className="settings-actions">
@@ -948,21 +997,22 @@ export default function Home() {
                 disabled={!firebaseConfigured || cloudBusy || busy}
                 onClick={() => void cloud(true)}
               >
-                Connect with Google
+                {account && !account.anonymous ? "Google connected" : "Sign in with Google"}
               </button>
               <button
                 className="secondary-button"
                 disabled={!firebaseConfigured || cloudBusy || busy}
                 onClick={() => void cloud(false)}
               >
-                Anonymous sync
+                {account?.anonymous ? "Anonymous account active" : "Continue anonymously"}
               </button>
+              {account && <button className="secondary-button" disabled={cloudBusy || busy} onClick={() => void logout()}>Sign out</button>}
             </div>
             <p className="field-help" role="status">{sync}</p>
             <p className="field-help">
-              Anonymous accounts stay tied to this browser. Use Google for
-              access across devices. Cloud connection merges notes; existing
-              cloud versions take priority.
+              Google accounts work across devices. Anonymous accounts stay tied
+              to this browser. Every Firebase UID has isolated workspace data and
+              its own encrypted OpenRouter key.
             </p>
             <button className="export-button" onClick={exportData}>
               <Download size={16} /> Export workspace backup

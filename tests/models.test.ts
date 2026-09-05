@@ -28,22 +28,6 @@ test("models route returns normalized catalog and handles provider failure", asy
     assert.equal((await models(new Request("http://localhost/api/models"))).status, 502);
   } finally { globalThis.fetch = original; }
 });
-test("connection verifies key with provider without returning account details", async () => {
-  const original = globalThis.fetch;
-  const req = () => new Request("http://localhost/api/connection", { headers: { Authorization: "Bearer test-not-real" } });
-  try {
-    assert.equal((await connection(new Request("http://localhost/api/connection"))).status, 401);
-    globalThis.fetch = async (url, init) => {
-      assert.equal(url, "https://openrouter.ai/api/v1/key");
-      assert.equal((init?.headers as Record<string,string>).Authorization, "Bearer test-not-real");
-      return Response.json({ data: { label: "private account", usage: 12 } });
-    };
-    const response = await connection(req());
-    assert.deepEqual(await response.json(), { connected: true });
-    assert.equal(response.headers.get("cache-control"), "no-store");
-    globalThis.fetch = async () => new Response("invalid", { status: 401 });
-    assert.equal((await connection(req())).status, 401);
-    globalThis.fetch = async () => { throw new Error("offline"); };
-    assert.equal((await connection(req())).status, 502);
-  } finally { globalThis.fetch = original; }
+test("connection key status is private to authenticated users", async () => {
+  assert.equal((await connection(new Request("http://localhost/api/connection"))).status, 401);
 });

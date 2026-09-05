@@ -139,6 +139,23 @@ test("model picker stays within a narrow mobile viewport", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: "artifacts/model-picker-mobile.png" });
 });
+test("status command reports context above the composer without calling chat API", async ({ page }) => {
+  let chatCalls = 0;
+  await page.route("**/api/chat", route => {
+    chatCalls++;
+    return route.fulfill({ contentType: "text/event-stream", body: sse });
+  });
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("/status");
+  await page.keyboard.press("Enter");
+  const status = page.getByRole("status", { name: "Context window status" });
+  await expect(status).toBeVisible();
+  await expect(status).toContainText("0 tokens used");
+  await expect(status).toContainText("128,000 left of 128,000");
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue("");
+  expect(chatCalls).toBe(0);
+  await expect(page.locator(".knowledge-panel")).toHaveCount(0);
+});
 test("create bot, stream chat, persist wiki and retrieve it in a new conversation", async ({
   page,
 }) => {
@@ -193,7 +210,7 @@ test("create bot, stream chat, persist wiki and retrieve it in a new conversatio
     page.getByRole("button", { name: "Connect API key" }),
   ).toBeVisible();
   expect(
-    await page.evaluate(() => localStorage.getItem("myadvisor.workspace.v1")),
+    await page.evaluate(() => localStorage.getItem("myadvisor.workspace.v1.guest")),
   ).not.toContain("test-key-never-sent");
   expect(errors).toEqual([]);
 });
@@ -201,9 +218,9 @@ test("long conversation compacts before streaming and saves summary", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.waitForFunction(() => localStorage.getItem('myadvisor.workspace.v1'));
+  await page.waitForFunction(() => localStorage.getItem('myadvisor.workspace.v1.guest'));
   await page.addInitScript(() => {
-    const data = JSON.parse(localStorage.getItem("myadvisor.workspace.v1")!);
+    const data = JSON.parse(localStorage.getItem("myadvisor.workspace.v1.guest")!);
     data.chats = [
       {
         id: "long",
@@ -219,7 +236,7 @@ test("long conversation compacts before streaming and saves summary", async ({
         })),
       },
     ];
-    localStorage.setItem("myadvisor.workspace.v1", JSON.stringify(data));
+    localStorage.setItem("myadvisor.workspace.v1.guest", JSON.stringify(data));
   });
   await page.reload();
   const calls: boolean[] = [];
@@ -251,7 +268,9 @@ test("long conversation compacts before streaming and saves summary", async ({
     "Start with a small experiment.",
   );
   expect(calls).toEqual([false, true]);
-  await expect(page.locator(".context-card")).toContainText(
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("/status");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status", { name: "Context window status" })).toContainText(
     "messages compacted into memory",
   );
 });

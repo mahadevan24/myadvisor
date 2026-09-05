@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The interface, bot editor, wiki, and local persistence work without Firebase. Open **Settings**, enter your own [OpenRouter API key](https://openrouter.ai/settings/keys), and start chatting. The key is held in React memory only: refresh the page and you will need to enter it again. It is never written to localStorage, Firestore, or application logs. The Next.js server forwards it to OpenRouter over HTTPS.
+Open http://localhost:3000. Sign in with Google or create an anonymous Firebase account, then open **Settings** and save your [OpenRouter API key](https://openrouter.ai/settings/keys). The browser sends the key once to an authenticated server endpoint. The server verifies it, encrypts it with AES-256-GCM, and stores only the ciphertext in a server-only Firestore document. Chat requests send a Firebase ID token; the raw OpenRouter key is decrypted and used only on the server.
 
 Each bot has an editable OpenRouter model ID. Starter bots use `openai/gpt-4o-mini`. Check [OpenRouter models](https://openrouter.ai/models) for availability and current pricing. Users pay their own provider costs. There are no tool calls, web browsing, or autonomous actions inside chats.
 
@@ -30,9 +30,11 @@ This checkout is already connected to **MyAdvisor** (`myadvisor-mahadevan`). The
    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-storage-bucket
    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
    NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
+   FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+   OPENROUTER_KEY_ENCRYPTION_KEY=32-byte-base64-value
    ```
 
-   Use the exact values from your console. These are Firebase web configuration values, not your OpenRouter key. Firebase web config is public; access is protected by Authentication and Firestore rules. No Admin SDK private key is needed. Storage and Analytics are not used.
+   Use the exact web values from your console. Firebase web config is public; access is protected by Authentication and Firestore rules. `FIREBASE_SERVICE_ACCOUNT_JSON` is a server-only service-account credential (Application Default Credentials may be used instead). Generate the encryption key with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Never expose either server value through a `NEXT_PUBLIC_` variable. Keep the encryption key stable, because existing saved keys cannot be decrypted after an unplanned rotation.
 
 4. In **Authentication → Sign-in method**, enable **Google** (choose a project support email) and **Anonymous**. Google is recommended for access from multiple devices. Anonymous sync is tied to the browser's Firebase identity; clearing browser data can lose access unless you first link Google.
 5. In **Authentication → Settings → Authorized domains**, add `localhost` if missing. Add your real domain before deployment. Open the app using `localhost`, not `0.0.0.0`.
@@ -44,9 +46,9 @@ This checkout is already connected to **MyAdvisor** (`myadvisor-mahadevan`). The
    npx firebase-tools deploy --only firestore:rules --project YOUR_PROJECT_ID
    ```
 
-   The rules only allow an authenticated user to access their own workspace at `users/{uid}/workspace/main`. Do not use public test-mode rules.
+   The rules only allow an authenticated user to access their own workspace at `users/{uid}/workspace/main`. They explicitly deny all client access to `users/{uid}/private/**`; only the server Admin SDK can access encrypted API-key documents. Do not use public test-mode rules.
 
-8. Restart `npm run dev` after saving `.env.local`. Open **Settings → Connect with Google** or **Anonymous sync**. The app loads the cloud workspace and merges new local records. When IDs overlap, the cloud version takes priority. Subsequent changes are saved after a short debounce. The API key is excluded from cloud data.
+8. Restart `npm run dev` after saving `.env.local`. Open **Settings → Sign in with Google** or **Continue anonymously**. Each Firebase UID receives an isolated workspace and encrypted API key. Subsequent workspace changes are saved after a short debounce.
 
 If a Google account is already linked to another Firebase user, anonymous account linking can fail. Export a backup before switching identities; this initial version does not merge separate Firebase accounts. Cloud sync reconnects through Settings after a refresh and is intended for one active editing session at a time.
 
@@ -59,7 +61,7 @@ Reference: [Firebase anonymous authentication](https://firebase.google.com/docs/
 - **Lightweight retrieval:** query terms rank same-bot entries; the best three contribute at most 3,600 characters. Entries from the current conversation are excluded to avoid duplicating active context. Source chips open the original note. No paid embedding calls or vector database are required. Lexical matching is intentionally simple and can miss synonyms or non-Latin queries.
 - **Compaction:** once active history exceeds approximately 6,000 tokens and has more than four messages, older messages are summarized in bounded chunks. The latest four messages remain verbatim. Each chunk is processed before advancing the compaction cursor; the summary is carried forward. Summaries are reused on subsequent turns. Compaction is a billed model call and can delay the first response on that turn.
 - **Bounds:** recent context is capped at 26,000 characters; retrieved context at 3,600; summary at 6,000; bot instructions at 5,000. Completion is capped at 2,048 tokens and summary calls at 700. The displayed token count is an estimate (`characters / 4`), not the provider's billed count. Exceptionally long recent histories can be truncated by the hard cap. Original messages remain in local history.
-- **Persistence:** browser localStorage saves conversations, bots, and wiki entries. Optional Firestore saves one private workspace document. It guards at 850 KB before Firestore's document limit and reports failures while keeping local data. This initial architecture is for personal workspaces; larger deployments should move conversations and messages into separate documents, use indexed retrieval, and add conflict resolution. Browser storage also has a quota. Use **Export workspace backup** to download your data; JSON restore is not yet implemented.
+- **Persistence:** browser localStorage saves guest conversations under a guest-specific key; signed-in workspaces are isolated by Firebase UID and stored in Firestore. Firestore persistence guards at 850 KB before the document limit and reports failures while keeping local data. The OpenRouter secret is stored separately as authenticated ciphertext and is never returned by the API. Larger deployments should split conversations and messages into separate documents and add conflict resolution. Use **Export workspace backup** to download workspace data; the encrypted key is never included.
 
 Conversation text is sent to the selected model provider through OpenRouter, and to Firebase only when cloud sync is connected. This is not end-to-end encrypted storage. Notes and summaries are treated as untrusted reference material in the model prompt. No tools are exposed.
 
@@ -83,10 +85,12 @@ Unit tests cover retrieval isolation, context bounds, compaction threshold, stre
 ## Structure
 
 - `src/app/page.tsx`: responsive workspace, bot editor, chat, settings, and wiki.
-- `src/app/api/chat/route.ts`: validated streaming OpenRouter proxy.
+- `src/app/api/chat/route.ts`: authenticated, validated streaming OpenRouter proxy.
+- `src/app/api/connection/route.ts`: verify, encrypt, store, and report API-key status.
 - `src/lib/memory.ts`: context budgeting, retrieval, and wiki extraction.
 - `src/lib/stream.ts`: streaming response parser.
 - `src/lib/firebase.ts`: optional authenticated cloud persistence.
+- `src/lib/firebase-admin.ts`: server authentication, Firestore access, and secret encryption.
 - `firestore.rules`: per-user workspace access rules.
 
 For a public deployment, use a Node-compatible Next.js host, HTTPS, abuse controls, and a storage design appropriate for the expected scale. No deployment has been made by this project setup.
