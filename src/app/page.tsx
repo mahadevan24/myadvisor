@@ -418,13 +418,19 @@ export default function Home() {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ key }),
+        signal: AbortSignal.timeout(30000),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "The server could not save your key. Try again shortly.");
+      if (data?.connected !== true) throw new Error("The server did not confirm that your key was saved. Please retry.");
       setKey("");
       setConnection({ status: "connected" });
     } catch (e) {
-      setConnection({ status: "error", message: e instanceof Error ? e.message : "Could not save key." });
+      setConnection({ status: "error", message: e instanceof TypeError
+        ? "Cannot reach the app server. Make sure it is running, then retry verification."
+        : e instanceof Error && e.name === "TimeoutError"
+          ? "Verification timed out. Please retry."
+          : e instanceof Error ? e.message : "Could not save key." });
     } finally {
       setCloudBusy(false);
     }

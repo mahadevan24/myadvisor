@@ -24,7 +24,12 @@ export async function requireUser(req: Request) {
   if (!header?.startsWith("Bearer ")) throw new Error("UNAUTHENTICATED");
   try {
     return await adminAuth.verifyIdToken(header.slice(7), true);
-  } catch {
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code?.startsWith("app/") || code === "auth/internal-error" || code === "auth/insufficient-permission") {
+      console.error("[firebase-admin] authentication unavailable", { code });
+      throw new Error("AUTH_SERVICE_UNAVAILABLE");
+    }
     throw new Error("UNAUTHENTICATED");
   }
 }
