@@ -14,6 +14,8 @@ import {
   KeyRound,
   Layers3,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings2,
@@ -86,6 +88,23 @@ export default function Home() {
   const [sync, setSync] = useState("Local workspace");
   const [cloudBusy, setCloudBusy] = useState(false);
   const [account, setAccount] = useState<{ label: string; anonymous: boolean } | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("myadvisor.sidebar.collapsed") === "true") {
+        setSidebarCollapsed(true);
+      }
+    } catch {}
+  }, []);
+  function toggleSidebar() {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("myadvisor.sidebar.collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  }
   const [sources, setSources] = useState<Entry[]>([]);
   const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -307,6 +326,10 @@ export default function Home() {
       e.preventDefault();
       newChat();
       inputRef.current?.focus();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      toggleSidebar();
     }
   });
   useEffect(() => {
@@ -607,15 +630,142 @@ export default function Home() {
   const contextPercent = contextLimit
     ? Math.min(100, (contextTokens / contextLimit) * 100)
     : 0;
+
+  useEffect(() => {
+    if (!input && inputRef.current) {
+      inputRef.current.style.height = "38px";
+    }
+  }, [input]);
+
+  const modelShortName = (() => {
+    const m = models.find((mod) => mod.id === bot.model);
+    if (!m) return bot.model.split("/").pop() || "Model";
+    if (m.name.includes(":")) return m.name.split(":")[1].trim();
+    return m.name;
+  })();
+
+  const renderComposer = () => (
+    <form
+      className="composer-pill"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send();
+      }}
+    >
+      <button
+        type="button"
+        className="composer-add-btn"
+        title="Start new chat"
+        aria-label="Start new chat"
+        onClick={() => newChat()}
+      >
+        <Plus size={18} />
+      </button>
+      <textarea
+        ref={inputRef}
+        aria-label="Message"
+        maxLength={12000}
+        rows={1}
+        placeholder="Ask, imagine, build anything…"
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+          e.target.style.height = "auto";
+          e.target.style.height = `${Math.min(160, Math.max(38, e.target.scrollHeight))}px`;
+        }}
+        onKeyDown={(e) => {
+          if (
+            e.key === "Enter" &&
+            !e.shiftKey &&
+            !e.nativeEvent.isComposing
+          ) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+      />
+      <div className="composer-pill-actions">
+        <button
+          type="button"
+          className="composer-model-pill"
+          disabled={busy}
+          onClick={() => openModels("chat")}
+          aria-label={`Choose model: ${bot.model}`}
+        >
+          <span>{modelShortName}</span>
+          <ChevronDown size={13} />
+        </button>
+        <button
+          type="button"
+          className="composer-icon-btn"
+          title="Bot settings"
+          aria-label="Bot settings"
+          onClick={() => setEditor({ ...bot })}
+        >
+          <AudioLines size={18} />
+        </button>
+        {busy ? (
+          <button
+            type="button"
+            className="composer-action-btn stop"
+            aria-label="Stop generation"
+            onClick={() => abort.current?.abort()}
+          >
+            <Square size={14} />
+          </button>
+        ) : input.trim() ? (
+          <button
+            className="composer-action-btn send"
+            disabled={!ready}
+            aria-label="Send message"
+          >
+            <ArrowUp size={18} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="composer-action-btn idle"
+            aria-label="Audio lines"
+            onClick={() => inputRef.current?.focus()}
+          >
+            <AudioLines size={17} />
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="/" aria-label="MyAdvisor home">
-          <span className="brand-icon">
-            <AudioLines size={22} />
-          </span>
-          myadvisor<span className="brand-dot">®</span>
-        </a>
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          className="sidebar-expand-btn"
+          onClick={toggleSidebar}
+          aria-label="Expand sidebar"
+          title="Expand sidebar (Ctrl+B)"
+        >
+          <PanelLeftOpen size={19} />
+        </button>
+      )}
+      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+        <div className="sidebar-top">
+          <a className="brand" href="/" aria-label="MyAdvisor home">
+            <span className="brand-icon">
+              <AudioLines size={22} />
+            </span>
+            myadvisor<span className="brand-dot">®</span>
+          </a>
+          <button
+            type="button"
+            className="sidebar-toggle-btn"
+            onClick={toggleSidebar}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar (Ctrl+B)"
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        </div>
         <button
           className="new-chat"
           onClick={() => newChat()}
@@ -711,255 +861,159 @@ export default function Home() {
         </div>
       </aside>
       <main className="main">
-        <header className="topbar">
-          <div className="breadcrumb">
-            Workspace <ChevronRight size={13} />
-            <span>
-              {view === "chat"
-                ? chat?.title || "New conversation"
-                : view === "history"
+        {view !== "chat" && (
+          <header className="topbar">
+            <div className="breadcrumb">
+              Workspace <ChevronRight size={13} />
+              <span>
+                {view === "history"
                   ? "Chat history"
-                : view === "bots"
-                  ? "My bots"
-                  : "Knowledge wiki"}
-            </span>
-          </div>
-          <div className="topbar-right">
-            <span className="private-label">
-              <ShieldCheck size={14} /> Private by design
-            </span>
-            <span className="divider" />
-            <button
-              className={`key-status ${connected ? "connected" : ""}`}
-              onClick={() => setSettings(true)}
-            >
-              <span className={connected ? "online-dot" : "offline-dot"} />
-              {connected ? "API key secured" : connection.status === "checking" ? "Checking API key…" : "Connect API key"}
-              <ArrowUpRight size={13} />
-            </button>
-          </div>
-        </header>
+                  : view === "bots"
+                    ? "My bots"
+                    : "Knowledge wiki"}
+              </span>
+            </div>
+            <div className="topbar-right">
+              <span className="private-label">
+                <ShieldCheck size={14} /> Private by design
+              </span>
+              <span className="divider" />
+              <button
+                className={`key-status ${connected ? "connected" : ""}`}
+                onClick={() => setSettings(true)}
+              >
+                <span className={connected ? "online-dot" : "offline-dot"} />
+                {connected ? "API key secured" : connection.status === "checking" ? "Checking API key…" : "Connect API key"}
+                <ArrowUpRight size={13} />
+              </button>
+            </div>
+          </header>
+        )}
         {view === "chat" && bot ? (
           <div className="chat-layout">
             <section className="conversation">
-              <div className="conversation-toolbar">
-                <button
-                  disabled={busy}
-                  className="bot-selector"
-                  onClick={() => setView("bots")}
-                >
-                  <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
-                  <strong>{bot.name}</strong>
-                  <ChevronDown size={14} />
-                </button>
-                <button className="model-trigger" disabled={busy} onClick={() => openModels("chat")} aria-label={`Choose model: ${bot.model}`}>
-                  <span>{models.find(m => m.id === bot.model)?.name || bot.model.split("/").pop()}</span><ChevronDown size={14} />
-                </button>
-                <button
-                  title="Configure bot"
-                  aria-label="Configure bot"
-                  className="icon-button"
-                  onClick={() => setEditor({ ...bot })}
-                >
-                  <Settings2 size={17} />
-                </button>
-              </div>
-              {!chat?.messages.length ? (
-                <div className="welcome">
-                  <div className="orb-wrap">
-                    <div className="orbit orbit-one" />
-                    <div className="orbit orbit-two" />
-                    <div className="orb">{bot.symbol}</div>
-                    <span className="orbit-point" />
-                    <span className="orb-caption">
-                      A LITTLE CURIOUS. ALWAYS HERE.
-                    </span>
-                  </div>
-                  <div className="welcome-kicker">
-                    YOUR MIND, WITH MORE ROOM.
-                  </div>
-                  <h1>
-                    Big ideas start with
-                    <br />a little <span>conversation.</span>
-                  </h1>
-                  <div className="prompt-grid">
-                    {(bot.quickPrompts?.length ? bot.quickPrompts : fallbackQuickPrompts(bot)).map((p, index) => (
-                      <button
-                        key={p.title}
-                        onClick={() => {
-                          setInput(p.prompt);
-                          inputRef.current?.focus();
-                        }}
-                      >
-                        <span className="prompt-icon">{promptIcons[index]}</span>
-                        <strong>{p.title}</strong>
-                        <span>{p.text}</span>
-                        <ArrowUpRight size={15} />
-                      </button>
+              {chat?.messages.length ? (
+                <>
+                  <div
+                    className="messages"
+                    ref={messagesContainerRef}
+                    onScroll={handleMessagesScroll}
+                    onWheel={handleMessagesWheel}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                  >
+                    {chat.messages.map((m) => (
+                      <article className={`message ${m.role}`} key={m.id}>
+                        <div
+                          className={`message-avatar ${m.role === "assistant" ? bot.color : ""}`}
+                        >
+                          {m.role === "user" ? "Y" : bot.symbol}
+                        </div>
+                        <div className="message-body">
+                          <div className="message-author">
+                            {m.role === "user" ? "You" : bot.name}
+                            <span>
+                              {m.role === "assistant"
+                                ? "YOUR THINKING PARTNER"
+                                : ""}
+                            </span>
+                          </div>
+                          <div className="markdown">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {m.content || "Thinking…"}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      </article>
                     ))}
-                  </div>
-                  <div className="welcome-foot">
-                    <span className="online-dot" /> Your conversations become
-                    knowledge. Nothing gets lost.
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="messages"
-                  ref={messagesContainerRef}
-                  onScroll={handleMessagesScroll}
-                  onWheel={handleMessagesWheel}
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                >
-                  {chat.messages.map((m) => (
-                    <article className={`message ${m.role}`} key={m.id}>
-                      <div
-                        className={`message-avatar ${m.role === "assistant" ? bot.color : ""}`}
-                      >
-                        {m.role === "user" ? "Y" : bot.symbol}
+                    {busy && (
+                      <div className="stream-status">
+                        <span className="online-dot pulse" />
+                        {phase}…
                       </div>
-                      <div className="message-body">
-                        <div className="message-author">
-                          {m.role === "user" ? "You" : bot.name}
+                    )}
+                    {sources.length > 0 && (
+                      <div className="source-chips">
+                        Wiki context:{" "}
+                        {sources.map((s, i) => (
+                          <button key={s.id} onClick={() => setEntry(s)}>
+                            [{i + 1}] {s.title.slice(0, 30)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div ref={bottom} />
+                  </div>
+                  <div className="composer-area bottom-center">
+                    {commandResult?.type === "status" && (
+                      <section className="command-status" role="status" aria-label="Context window status">
+                        <div className="command-status-heading">
+                          <span className="online-dot" />
+                          <strong>Context window</strong>
+                          <button aria-label="Dismiss status" onClick={() => setCommandResult(null)}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <div className="context-meter" aria-hidden="true">
+                          <span style={{ width: `${contextPercent}%` }} />
+                        </div>
+                        <div className="command-status-values">
+                          <span>{contextTokens.toLocaleString()} tokens used</span>
                           <span>
-                            {m.role === "assistant"
-                              ? "YOUR THINKING PARTNER"
-                              : ""}
+                            {contextLimit
+                              ? `${Math.max(0, contextLimit - contextTokens).toLocaleString()} left of ${contextLimit.toLocaleString()}`
+                              : "Context limit unavailable"}
                           </span>
                         </div>
-                        <div className="markdown">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {m.content || "Thinking…"}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                  {busy && (
-                    <div className="stream-status">
-                      <span className="online-dot pulse" />
-                      {phase}…
-                    </div>
-                  )}
-                  {sources.length > 0 && (
-                    <div className="source-chips">
-                      Wiki context:{" "}
-                      {sources.map((s, i) => (
-                        <button key={s.id} onClick={() => setEntry(s)}>
-                          [{i + 1}] {s.title.slice(0, 30)}
+                        {!!chat?.compactedCount && (
+                          <small>{chat.compactedCount} messages compacted into memory</small>
+                        )}
+                      </section>
+                    )}
+                    {commandResult?.type === "error" && (
+                      <div role="alert" className="error-banner command-error">
+                        {commandResult.message}
+                        <button aria-label="Dismiss command message" onClick={() => setCommandResult(null)}>
+                          <X size={14} />
                         </button>
-                      ))}
+                      </div>
+                    )}
+                    {error && !settings && (
+                      <div role="alert" className="error-banner">
+                        {error}
+                        <button
+                          aria-label="Dismiss error"
+                          onClick={() => setError("")}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {renderComposer()}
+                    <div className="composer-foot">
+                      <span>AI can be wrong. Stay curious.</span>
                     </div>
-                  )}
-                  <div ref={bottom} />
+                  </div>
+                </>
+              ) : (
+                <div className="chat-center-stage">
+                  <h1 className="hero-greeting">What&apos;s on the agenda today?</h1>
+                  <div className="hero-composer-box">
+                    {error && !settings && (
+                      <div role="alert" className="error-banner" style={{ width: "100%", marginBottom: 16 }}>
+                        {error}
+                        <button
+                          aria-label="Dismiss error"
+                          onClick={() => setError("")}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {renderComposer()}
+                  </div>
                 </div>
               )}
-              <div className="composer-area">
-                {commandResult?.type === "status" && (
-                  <section className="command-status" role="status" aria-label="Context window status">
-                    <div className="command-status-heading">
-                      <span className="online-dot" />
-                      <strong>Context window</strong>
-                      <button aria-label="Dismiss status" onClick={() => setCommandResult(null)}>
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <div className="context-meter" aria-hidden="true">
-                      <span style={{ width: `${contextPercent}%` }} />
-                    </div>
-                    <div className="command-status-values">
-                      <span>{contextTokens.toLocaleString()} tokens used</span>
-                      <span>
-                        {contextLimit
-                          ? `${Math.max(0, contextLimit - contextTokens).toLocaleString()} left of ${contextLimit.toLocaleString()}`
-                          : "Context limit unavailable"}
-                      </span>
-                    </div>
-                    {!!chat?.compactedCount && (
-                      <small>{chat.compactedCount} messages compacted into memory</small>
-                    )}
-                  </section>
-                )}
-                {commandResult?.type === "error" && (
-                  <div role="alert" className="error-banner command-error">
-                    {commandResult.message}
-                    <button aria-label="Dismiss command message" onClick={() => setCommandResult(null)}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                {error && !settings && (
-                  <div role="alert" className="error-banner">
-                    {error}
-                    <button
-                      aria-label="Dismiss error"
-                      onClick={() => setError("")}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                <form
-                  className="composer"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void send();
-                  }}
-                >
-                  <textarea
-                    ref={inputRef}
-                    aria-label="Message"
-                    maxLength={12000}
-                    placeholder={`What's on your mind? Ask ${bot.name} anything…`}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        !e.nativeEvent.isComposing
-                      ) {
-                        e.preventDefault();
-                        void send();
-                      }
-                    }}
-                  />
-                  <div className="composer-bottom">
-                    <span>
-                      <Sparkles size={14} /> A space to think out loud
-                    </span>
-                    <div>
-                      <span className="enter-hint">↵ to send</span>
-                      {busy ? (
-                        <button
-                          type="button"
-                          className="send-button"
-                          aria-label="Stop generation"
-                          onClick={() => abort.current?.abort()}
-                        >
-                          <Square size={15} />
-                        </button>
-                      ) : (
-                        <button
-                          className="send-button"
-                          disabled={!input.trim() || !ready}
-                          aria-label="Send message"
-                        >
-                          <ArrowUp size={19} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </form>
-                <div className="composer-foot">
-                  <span>
-                    <ShieldCheck size={12} /> Your key. Your models. Your
-                    conversations.
-                  </span>
-                  <span>AI can be wrong. Stay curious.</span>
-                </div>
-              </div>
             </section>
           </div>
         ) : (
