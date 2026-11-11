@@ -652,15 +652,6 @@ export default function Home() {
         void send();
       }}
     >
-      <button
-        type="button"
-        className="composer-add-btn"
-        title="Start new chat"
-        aria-label="Start new chat"
-        onClick={() => newChat()}
-      >
-        <Plus size={18} />
-      </button>
       <textarea
         ref={inputRef}
         aria-label="Message"
@@ -695,15 +686,6 @@ export default function Home() {
           <span>{modelShortName}</span>
           <ChevronDown size={13} />
         </button>
-        <button
-          type="button"
-          className="composer-icon-btn"
-          title="Bot settings"
-          aria-label="Bot settings"
-          onClick={() => setEditor({ ...bot })}
-        >
-          <AudioLines size={18} />
-        </button>
         {busy ? (
           <button
             type="button"
@@ -713,22 +695,13 @@ export default function Home() {
           >
             <Square size={14} />
           </button>
-        ) : input.trim() ? (
+        ) : (
           <button
             className="composer-action-btn send"
-            disabled={!ready}
+            disabled={!input.trim() || !ready}
             aria-label="Send message"
           >
             <ArrowUp size={18} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="composer-action-btn idle"
-            aria-label="Audio lines"
-            onClick={() => inputRef.current?.focus()}
-          >
-            <AudioLines size={17} />
           </button>
         )}
       </div>
@@ -997,7 +970,7 @@ export default function Home() {
                 </>
               ) : (
                 <div className="chat-center-stage">
-                  <h1 className="hero-greeting">What&apos;s on the agenda today?</h1>
+                  <h1 className="hero-greeting">Whats on your mind?</h1>
                   <div className="hero-composer-box">
                     {error && !settings && (
                       <div role="alert" className="error-banner" style={{ width: "100%", marginBottom: 16 }}>
