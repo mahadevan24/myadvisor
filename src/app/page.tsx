@@ -92,6 +92,10 @@ export default function Home() {
   const promptAttempts = useRef(new Set<string>());
   const [promptBusy, setPromptBusy] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
+  const touchStartY = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bot = workspace.bots.find((b) => b.id === botId) || workspace.bots[0];
   const chat = workspace.chats.find((c) => c.id === chatId);
@@ -230,9 +234,68 @@ export default function Home() {
       window.removeEventListener("pagehide", persist);
     };
   }, [workspace, ready, cloudUid]);
+  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
+    const el = messagesContainerRef.current;
+    if (el) {
+      if (behavior === "smooth") {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+      lastScrollTopRef.current = el.scrollTop;
+    } else {
+      bottom.current?.scrollIntoView({ behavior });
+    }
+  };
+
+  const handleMessagesScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const currentScrollTop = el.scrollTop;
+    const distanceFromBottom = el.scrollHeight - currentScrollTop - el.clientHeight;
+
+    if (currentScrollTop < lastScrollTopRef.current - 2) {
+      shouldAutoScrollRef.current = false;
+    } else if (distanceFromBottom <= 40) {
+      shouldAutoScrollRef.current = true;
+    }
+    lastScrollTopRef.current = currentScrollTop;
+  };
+
+  const handleMessagesWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      shouldAutoScrollRef.current = false;
+    } else if (e.deltaY > 0) {
+      const el = messagesContainerRef.current;
+      if (el) {
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distanceFromBottom <= 40) {
+          shouldAutoScrollRef.current = true;
+        }
+      }
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touchY = e.touches[0].clientY;
+    if (touchY - touchStartY.current > 10) {
+      shouldAutoScrollRef.current = false;
+    }
+  };
+
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat?.messages.at(-1)?.content, busy]);
+    if (!shouldAutoScrollRef.current) return;
+    scrollToBottom("auto");
+  }, [chat?.messages.length, chat?.messages.at(-1)?.content]);
+
+  useEffect(() => {
+    shouldAutoScrollRef.current = true;
+    scrollToBottom("auto");
+  }, [chatId]);
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key === "Escape") {
       if (modelPicker) { setModelPicker(null); return; }
@@ -339,6 +402,7 @@ export default function Home() {
     }
     const controller = new AbortController();
     abort.current = controller;
+    shouldAutoScrollRef.current = true;
     setBusy(true);
     setError("");
     setSources([]);
@@ -740,7 +804,14 @@ export default function Home() {
                   </div>
                 </div>
               ) : (
-                <div className="messages">
+                <div
+                  className="messages"
+                  ref={messagesContainerRef}
+                  onScroll={handleMessagesScroll}
+                  onWheel={handleMessagesWheel}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                >
                   {chat.messages.map((m) => (
                     <article className={`message ${m.role}`} key={m.id}>
                       <div
