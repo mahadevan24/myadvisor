@@ -286,11 +286,6 @@ button:hover:not(:disabled) {
   border-radius: 4px;
   padding: 2px 5px;
 }
-  font-size: 10px;
-  background: #2d3035;
-  border-radius: 4px;
-  padding: 2px 5px;
-}
 .bot-label {
   display: flex;
   align-items: center;
