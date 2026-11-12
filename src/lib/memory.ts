@@ -12,6 +12,7 @@ export type Message = {
   role: "user" | "assistant";
   content: string;
   attachments?: Attachment[];
+  thoughtSeconds?: number;
 };
 export type Bot = {
   id: string;
@@ -146,7 +147,7 @@ export function retrieve(
   entries: Entry[],
   query: string,
   botId: string,
-  maxChars = 3600,
+  maxChars = 1800,
 ) {
   let remaining = maxChars;
   const botEntries = entries.filter((e) => e.botId === botId);
@@ -156,7 +157,7 @@ export function retrieve(
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       .slice(0, 3)
       .map((entry) => {
-        const content = entry.content.slice(0, Math.max(0, remaining));
+        const content = entry.content.slice(0, Math.min(600, Math.max(0, remaining)));
         remaining -= content.length;
         return { ...entry, content };
       })
@@ -179,18 +180,21 @@ export function retrieve(
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
     .map(({ entry }) => {
-      const content = entry.content.slice(0, Math.max(0, remaining));
+      const content = entry.content.slice(0, Math.min(600, Math.max(0, remaining)));
       remaining -= content.length;
       return { ...entry, content };
     })
     .filter((e) => e.content);
 }
 export function needsCompaction(chat: Chat) {
+  const uncompacted = chat.messages.slice(chat.compactedCount);
+  const uncompactedTokens = uncompacted.reduce(
+    (n, m) => n + estimateTokens(m.content),
+    0,
+  );
   return (
-    (chat.messages.length - chat.compactedCount > 60 || chat.messages
-      .slice(chat.compactedCount)
-      .reduce((n, m) => n + estimateTokens(m.content), 0) > 6000) &&
-    chat.messages.length - chat.compactedCount > 4
+    (uncompacted.length > 16 || uncompactedTokens > 2200) &&
+    uncompacted.length > 4
   );
 }
 export function buildContext(
@@ -229,35 +233,49 @@ export function buildContext(
   // Hard bound protects against a failed compaction or an unusually long turn.
   let budget = 26000;
   const recent: { role: "user" | "assistant"; content: string | any[] }[] = [];
-  for (const m of [...chat.messages.slice(chat.compactedCount)].reverse()) {
+  const uncompacted = chat.messages.slice(chat.compactedCount);
+  const totalUncompacted = uncompacted.length;
+
+  for (let i = totalUncompacted - 1; i >= 0; i--) {
+    const m = uncompacted[i];
     if (budget <= 0 || recent.length >= 79) break;
     const content = m.content.slice(0, budget);
     budget -= content.length;
+    // Keep heavy multi-megabyte image/file data URLs only for the active current turn (last 2 messages).
+    // Earlier historical turns use compact text references to prevent token explosion.
+    const isRecentTurn = i >= totalUncompacted - 2;
+
     if (m.attachments && m.attachments.length > 0) {
-      const parts: any[] = [];
-      if (content.trim()) {
-        parts.push({ type: "text", text: content });
-      }
-      for (const att of m.attachments) {
-        if (att.type.startsWith("image/")) {
-          parts.push({
-            type: "image_url",
-            image_url: { url: att.url },
-          });
-        } else {
-          parts.push({
-            type: "file",
-            file: {
-              filename: att.name,
-              file_data: att.url,
-            },
-          });
+      if (isRecentTurn) {
+        const parts: any[] = [];
+        if (content.trim()) {
+          parts.push({ type: "text", text: content });
         }
+        for (const att of m.attachments) {
+          if (att.type.startsWith("image/")) {
+            parts.push({
+              type: "image_url",
+              image_url: { url: att.url },
+            });
+          } else {
+            parts.push({
+              type: "file",
+              file: {
+                filename: att.name,
+                file_data: att.url,
+              },
+            });
+          }
+        }
+        if (!parts.some((p) => p.type === "text")) {
+          parts.unshift({ type: "text", text: "Please analyze the attached file(s)." });
+        }
+        recent.unshift({ role: m.role, content: parts });
+      } else {
+        const fileNotes = m.attachments.map((a) => `[Attached: ${a.name}]`).join(" ");
+        const combined = content ? `${content}\n${fileNotes}` : fileNotes;
+        recent.unshift({ role: m.role, content: combined });
       }
-      if (!parts.some((p) => p.type === "text")) {
-        parts.unshift({ type: "text", text: "Please analyze the attached file(s)." });
-      }
-      recent.unshift({ role: m.role, content: parts });
     } else {
       recent.unshift({ role: m.role, content });
     }
@@ -434,14 +452,81 @@ export function makeEntry(chat: Chat): Entry {
     content: [
       chat.summary,
       ...chat.messages
-        .slice(-6)
+        .slice(-4)
         .map(
           (m) => `${m.role === "user" ? "Question" : "Answer"}: ${m.content || (m.attachments?.length ? `[Attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "")}`,
         ),
     ]
       .filter(Boolean)
       .join("\n\n")
-      .slice(0, 18000),
+      .slice(0, 4000),
     updatedAt: Date.now(),
   };
+}
+
+export const DEFAULT_BOT_IDS = new Set<string>([
+  "nova",
+  "cipher",
+  "echo",
+  ...CURATED_BOTS.map((b) => b.id),
+]);
+
+export const DEFAULT_BOT_NAMES = new Set<string>([
+  "nova",
+  "cipher",
+  "echo",
+  ...CURATED_BOTS.map((b) => b.name.toLowerCase().trim()),
+]);
+
+export function isCuratedBot(bot: Bot | { id?: string; name?: string }): boolean {
+  if (!bot) return false;
+  if (bot.id && DEFAULT_BOT_IDS.has(bot.id)) return true;
+  if (bot.name && DEFAULT_BOT_NAMES.has(bot.name.toLowerCase().trim())) return true;
+  return false;
+}
+
+export function mergeBots(primary: Bot[], secondary: Bot[]): Bot[] {
+  const map = new Map<string, Bot>();
+  for (const b of primary || []) {
+    if (b && b.id) {
+      map.set(b.id, b);
+      if (b.name) map.set(`name:${b.name.toLowerCase().trim()}`, b);
+    }
+  }
+  for (const b of secondary || []) {
+    if (!b || !b.id) continue;
+    const existingById = map.get(b.id);
+    const existingByName = b.name ? map.get(`name:${b.name.toLowerCase().trim()}`) : undefined;
+    const existing = existingById || existingByName;
+    if (existing) {
+      const merged: Bot = {
+        ...existing,
+        ...b,
+        quickPrompts: b.quickPrompts?.length ? b.quickPrompts : existing.quickPrompts,
+      };
+      map.set(existing.id, merged);
+      if (b.id !== existing.id) map.set(b.id, merged);
+    } else {
+      map.set(b.id, b);
+      if (b.name) map.set(`name:${b.name.toLowerCase().trim()}`, b);
+    }
+  }
+  const result: Bot[] = [];
+  const seenIds = new Set<string>();
+  for (const b of map.values()) {
+    if (!seenIds.has(b.id)) {
+      seenIds.add(b.id);
+      result.push(b);
+    }
+  }
+  // Ensure default curated bots are included if missing
+  for (const defaultBot of initialWorkspace.bots) {
+    const hasId = seenIds.has(defaultBot.id);
+    const hasName = defaultBot.name && result.some((r) => r.name.toLowerCase().trim() === defaultBot.name.toLowerCase().trim());
+    if (!hasId && !hasName) {
+      result.push(defaultBot);
+      seenIds.add(defaultBot.id);
+    }
+  }
+  return result;
 }

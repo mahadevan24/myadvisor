@@ -61,12 +61,44 @@ export async function disconnectCloud() {
 }
 export async function saveCloud(uid: string, workspace: Workspace) {
   const { db } = services();
-  const data = JSON.stringify(workspace);
-  if (new TextEncoder().encode(data).length > 850000)
-    throw new Error(
-      "Cloud workspace is near its size limit. Export a backup; local changes are still saved.",
-    );
-  const sanitized = JSON.parse(data);
+  let sanitized: any = JSON.parse(JSON.stringify(workspace));
+  let data = JSON.stringify(sanitized);
+
+  // If workspace approaches Firestore document size limits (e.g. from inline image attachments),
+  // strip large base64 data URLs from older chat attachments to ensure bots and conversations
+  // always save reliably to Firestore without exceeding limits.
+  if (new TextEncoder().encode(data).length > 700000 && Array.isArray(sanitized.chats)) {
+    sanitized.chats = sanitized.chats.map((c: any) => ({
+      ...c,
+      messages: Array.isArray(c.messages)
+        ? c.messages.map((m: any) => ({
+            ...m,
+            attachments: Array.isArray(m.attachments)
+              ? m.attachments.map((a: any) => ({
+                  ...a,
+                  // Strip huge base64 data URLs in older messages; keep metadata
+                  url: typeof a.url === "string" && a.url.length > 2000 ? "" : a.url,
+                }))
+              : m.attachments,
+          }))
+        : c.messages,
+    }));
+    data = JSON.stringify(sanitized);
+  }
+
+  if (new TextEncoder().encode(data).length > 850000) {
+    // Retain all bots and recent chats, trim oldest chats if necessary
+    if (Array.isArray(sanitized.chats) && sanitized.chats.length > 5) {
+      sanitized.chats = sanitized.chats.slice(0, 10);
+      data = JSON.stringify(sanitized);
+    }
+    if (new TextEncoder().encode(data).length > 850000) {
+      throw new Error(
+        "Cloud workspace is near its size limit. Export a backup; local changes are still saved.",
+      );
+    }
+  }
+
   await setDoc(doc(db, "users", uid, "workspace", "main"), {
     data: sanitized,
     updatedAt: Date.now(),

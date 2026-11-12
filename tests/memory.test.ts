@@ -12,6 +12,9 @@ import {
   deriveFallbackTitle,
   buildTitlePrompt,
   isGreeting,
+  isCuratedBot,
+  mergeBots,
+  type Bot,
   type Chat,
   type Entry,
 } from "../src/lib/memory";
@@ -412,4 +415,104 @@ test("curated bot collection includes all requested mentor categories and valid 
     assert.ok(found.color);
     assert.ok(found.symbol);
   }
+});
+
+test("mergeBots preserves custom imported bots and avoids losing bots during cloud sync", () => {
+  const customBot1: Bot = {
+    id: "bot-custom-1",
+    name: "System Architect",
+    category: "Engineering",
+    description: "Cloud and distributed systems design",
+    instructions: "Think in distributed systems terms.",
+    model: "openai/gpt-4o-mini",
+    color: "purple",
+    symbol: "⚙",
+  };
+  const customBot2: Bot = {
+    id: "bot-custom-2",
+    name: "Writing Coach",
+    category: "Creativity",
+    description: "Helps write clear essays",
+    instructions: "Focus on clarity and economy of words.",
+    model: "openai/gpt-4o-mini",
+    color: "peach",
+    symbol: "✎",
+  };
+
+  assert.equal(isCuratedBot(customBot1), false);
+  assert.equal(isCuratedBot(initialWorkspace.bots[0]), true);
+
+  // Simulate an older cloud saved state with only default bots
+  const savedCloudBots = [initialWorkspace.bots[0]];
+  // Local state with imported bots
+  const localBots = [...initialWorkspace.bots, customBot1];
+
+  const merged = mergeBots(savedCloudBots, localBots);
+  assert.ok(merged.some((b) => b.id === "bot-custom-1"));
+  assert.ok(merged.some((b) => b.id === "nova"));
+  assert.ok(merged.some((b) => b.name === "Steve Jobs"));
+
+  // Merging another imported bot list keeps both custom bots
+  const mergedWithMore = mergeBots(merged, [customBot2]);
+  assert.ok(mergedWithMore.some((b) => b.id === "bot-custom-1"));
+  assert.ok(mergedWithMore.some((b) => b.id === "bot-custom-2"));
+  // No duplicates
+  const names = mergedWithMore.map((b) => b.name.toLowerCase());
+  assert.equal(names.length, new Set(names).size);
+});
+
+test("context management bounds token usage by trimming heavy attachments on older turns", () => {
+  const multiTurnChat: Chat = {
+    ...chat,
+    messages: [
+      {
+        id: "msg-1",
+        role: "user",
+        content: "Here is an earlier diagram",
+        attachments: [
+          {
+            id: "att-old",
+            name: "huge-arch.png",
+            type: "image/png",
+            size: 500000,
+            url: "data:image/png;base64," + "A".repeat(10000),
+          },
+        ],
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: "I see the architecture diagram.",
+      },
+      {
+        id: "msg-3",
+        role: "user",
+        content: "Now check this latest wireframe",
+        attachments: [
+          {
+            id: "att-latest",
+            name: "wireframe.png",
+            type: "image/png",
+            size: 1000,
+            url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { messages } = buildContext(multiTurnChat, initialWorkspace.bots[0], []);
+  assert.equal(messages.length, 4); // System + 3 messages
+
+  // Older turn (msg-1) should have lightweight string reference, not the 10,000 char base64 payload
+  const olderMsg = messages[1];
+  assert.equal(typeof olderMsg.content, "string");
+  assert.ok((olderMsg.content as string).includes("[Attached: huge-arch.png]"));
+  assert.ok(!(olderMsg.content as string).includes("data:image/png;base64"));
+
+  // Latest turn (msg-3) should have full multimodal parts
+  const latestMsg = messages[3];
+  assert.ok(Array.isArray(latestMsg.content));
+  const parts = latestMsg.content as any[];
+  assert.ok(parts.some((p) => p.type === "image_url"));
 });

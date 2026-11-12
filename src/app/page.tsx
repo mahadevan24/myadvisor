@@ -44,9 +44,11 @@ import {
   deriveFallbackTitle,
   estimateTokens,
   initialWorkspace,
+  isCuratedBot,
   isGenericTitle,
   isGreetingTitle,
   makeEntry,
+  mergeBots,
   needsCompaction,
 } from "@/lib/memory";
 import { authToken, connectCloud, disconnectCloud, firebaseConfigured, saveCloud, watchAuth } from "@/lib/firebase";
@@ -186,9 +188,65 @@ const fallbackQuickPrompts = (bot: Bot): QuickPrompt[] => {
   ];
 };
 
+function recoverCustomBots(): Bot[] {
+  if (typeof window === "undefined") return [];
+  const customBots: Bot[] = [];
+  const seenKeys = new Set<string>();
+
+  const checkList = (list: any[]) => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      if (item && typeof item === "object" && typeof item.name === "string" && item.name.trim()) {
+        const id = typeof item.id === "string" ? item.id.trim() : "";
+        const name = item.name.trim();
+        const key = (id || name).toLowerCase();
+        if (!isCuratedBot(item) && !seenKeys.has(key)) {
+          seenKeys.add(key);
+          customBots.push({
+            id: id || `bot-${uid()}`,
+            name,
+            category: typeof item.category === "string" && item.category.trim() ? item.category.trim() : "General",
+            description: typeof item.description === "string" && item.description.trim() ? item.description.trim() : `Discussion with ${name}`,
+            instructions: typeof item.instructions === "string" && item.instructions.trim() ? item.instructions.trim() : `You are ${name}.`,
+            model: typeof item.model === "string" && item.model.trim() ? item.model.trim() : "openai/gpt-4o-mini",
+            color: typeof item.color === "string" && item.color.trim() ? item.color.trim() : "mint",
+            symbol: typeof item.symbol === "string" && item.symbol.trim() ? item.symbol.trim() : "✳",
+            quickPrompts: Array.isArray(item.quickPrompts) ? item.quickPrompts : undefined,
+          });
+        }
+      }
+    }
+  };
+
+  try {
+    const dedicated = localStorage.getItem("myadvisor.customBots.v1");
+    if (dedicated) {
+      try { checkList(JSON.parse(dedicated)); } catch {}
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith("myadvisor.") || k.includes("workspace") || k.includes("bot")) {
+        try {
+          const raw = localStorage.getItem(k);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            checkList(parsed);
+          } else if (Array.isArray(parsed?.bots)) {
+            checkList(parsed.bots);
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+  return customBots;
+}
+
 function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid: string } | null {
   if (typeof window === "undefined") return null;
   try {
+    const recovered = recoverCustomBots();
     const lastUid = preferredUid || localStorage.getItem("myadvisor.lastUid");
     if (lastUid) {
       const saved = localStorage.getItem(`myadvisor.workspace.v1.${lastUid}`);
@@ -199,6 +257,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
           Array.isArray(data.chats) &&
           Array.isArray(data.entries)
         ) {
+          data.bots = mergeBots(data.bots, recovered);
           return { workspace: data, uid: lastUid };
         }
       }
@@ -223,6 +282,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
               try {
                 localStorage.setItem("myadvisor.lastUid", foundUid);
               } catch {}
+              data.bots = mergeBots(data.bots, recovered);
               return { workspace: data, uid: foundUid };
             }
           }
@@ -239,8 +299,15 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
         Array.isArray(data.chats) &&
         Array.isArray(data.entries)
       ) {
+        data.bots = mergeBots(data.bots, recovered);
         return { workspace: data, uid: lastUid || "guest" };
       }
+    }
+    if (recovered.length > 0) {
+      return {
+        workspace: { ...initialWorkspace, bots: mergeBots(initialWorkspace.bots, recovered) },
+        uid: lastUid || "guest",
+      };
     }
   } catch {}
   return null;
@@ -394,20 +461,14 @@ export default function Home() {
   }, [workspace.bots]);
 
   function importBotsList(botsToImport: Bot[]) {
+    try {
+      const existingCustom = recoverCustomBots();
+      const updatedCustom = mergeBots(existingCustom, botsToImport);
+      localStorage.setItem("myadvisor.customBots.v1", JSON.stringify(updatedCustom));
+    } catch {}
+
     setWorkspace((current) => {
-      const merged = [...current.bots];
-      for (const b of botsToImport) {
-        const idx = merged.findIndex(
-          (existing) =>
-            existing.id === b.id ||
-            existing.name.toLowerCase().trim() === b.name.toLowerCase().trim()
-        );
-        if (idx >= 0) {
-          merged[idx] = { ...merged[idx], ...b };
-        } else {
-          merged.push(b);
-        }
-      }
+      const merged = mergeBots(current.bots, botsToImport);
       const cleanBots = merged.map((b) => {
         const clean: Bot = {
           id: b.id,
@@ -424,13 +485,13 @@ export default function Home() {
       });
       const updated = { ...current, bots: cleanBots };
       try {
-        const currentUid = localStorage.getItem("myadvisor.lastUid") || "guest";
+        const targetUid = cloudUid || localStorage.getItem("myadvisor.lastUid") || "guest";
         localStorage.setItem(
-          `myadvisor.workspace.v1.${currentUid}`,
+          `myadvisor.workspace.v1.${targetUid}`,
           JSON.stringify(updated)
         );
-        if (currentUid && currentUid !== "guest") {
-          void saveCloud(currentUid, updated).catch(() => {});
+        if (targetUid && targetUid !== "guest") {
+          void saveCloud(targetUid, updated).catch(() => {});
         }
       } catch {}
       return updated;
@@ -815,22 +876,31 @@ export default function Home() {
 
     setSync("Syncing…");
     void connectCloud(false).then(({ uid, workspace: saved }) => {
+      const recovered = recoverCustomBots();
       if (saved) {
-        setWorkspace(saved);
-        const targetDefault = saved.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
-        if (targetDefault && saved.bots.some((b: Bot) => b.id === targetDefault)) {
-          setDefaultBotId(targetDefault);
-          setBotId(targetDefault);
-        }
-        try {
-          localStorage.setItem(`myadvisor.workspace.v1.${uid}`, JSON.stringify(saved));
-        } catch {}
+        setWorkspace((current) => {
+          const mergedBots = mergeBots(saved.bots, mergeBots(current.bots, recovered));
+          const mergedWorkspace: Workspace = { ...saved, bots: mergedBots };
+          const targetDefault = mergedWorkspace.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+          if (targetDefault && mergedWorkspace.bots.some((b: Bot) => b.id === targetDefault)) {
+            setDefaultBotId(targetDefault);
+            setBotId(targetDefault);
+          }
+          try {
+            localStorage.setItem(`myadvisor.workspace.v1.${uid}`, JSON.stringify(mergedWorkspace));
+            localStorage.setItem("myadvisor.customBots.v1", JSON.stringify(mergedBots.filter((b) => !isCuratedBot(b))));
+          } catch {}
+          void saveCloud(uid, mergedWorkspace).catch(() => {});
+          return mergedWorkspace;
+        });
       } else {
         setWorkspace((current) => {
-          if (current.bots.length > 0) {
-            void saveCloud(uid, current).catch(() => {});
+          const mergedBots = mergeBots(current.bots, recovered);
+          const updated = { ...current, bots: mergedBots };
+          if (updated.bots.length > 0) {
+            void saveCloud(uid, updated).catch(() => {});
           }
-          return current;
+          return updated;
         });
       }
       setCloudUid(uid);
@@ -1221,6 +1291,8 @@ export default function Home() {
       setSources(context.sources);
       setPhase("Thinking");
       const assistantId = uid();
+      const thinkStart = Date.now();
+      let firstChunkTime = 0;
       current = {
         ...current,
         messages: [
@@ -1294,6 +1366,9 @@ export default function Home() {
         rafId = requestAnimationFrame(updateDisplay);
 
         readStream(response, (content) => {
+          if (!firstChunkTime) {
+            firstChunkTime = Date.now();
+          }
           setPhase("Streaming");
           targetContent = content;
         })
@@ -1306,6 +1381,16 @@ export default function Home() {
           });
       });
 
+      const thoughtSeconds = Math.max(
+        1,
+        Math.round(((firstChunkTime || Date.now()) - thinkStart) / 1000),
+      );
+      current = {
+        ...current,
+        messages: current.messages.map((m) =>
+          m.id === assistantId ? { ...m, thoughtSeconds } : m,
+        ),
+      };
       setStreamingMessageId(null);
       updateChat(current, true);
 
@@ -1444,6 +1529,12 @@ export default function Home() {
     const remainingBots = workspace.bots.filter(
       (candidate) => candidate.id !== target.id,
     );
+    try {
+      const custom = recoverCustomBots().filter(
+        (b) => b.id !== target.id && b.name.toLowerCase() !== target.name.toLowerCase(),
+      );
+      localStorage.setItem("myadvisor.customBots.v1", JSON.stringify(custom));
+    } catch {}
     setWorkspace((current) => ({
       ...current,
       bots: current.bots.filter((candidate) => candidate.id !== target.id),
@@ -2033,7 +2124,15 @@ export default function Home() {
                               {m.role === "assistant" && m.content && (
                                 <div className="claude-thought-header">
                                   <span className="claude-thought-spark">✦</span>
-                                  <span>Thought for a few seconds</span>
+                                  <span>
+                                    {(() => {
+                                      const secs =
+                                        typeof m.thoughtSeconds === "number" && m.thoughtSeconds > 0
+                                          ? m.thoughtSeconds
+                                          : Math.max(1, Math.min(8, Math.round((m.content.length || 100) / 400)));
+                                      return `Thought for ${secs} second${secs === 1 ? "" : "s"}`;
+                                    })()}
+                                  </span>
                                   <span className="claude-thinking-chevron">›</span>
                                 </div>
                               )}
@@ -2452,10 +2551,22 @@ export default function Home() {
                 quickPrompts = fallbackQuickPrompts(editor);
                 setError(cause instanceof Error ? `${cause.message} Saved with tailored offline prompts.` : "Saved with tailored offline prompts.");
               }
-              setWorkspace((w) => ({
-                ...w,
-                bots: [...w.bots.filter((b) => b.id !== editor.id), { ...editor, quickPrompts }],
-              }));
+              const updatedBot = { ...editor, quickPrompts };
+              try {
+                if (!isCuratedBot(updatedBot)) {
+                  const existingCustom = recoverCustomBots();
+                  const updatedCustom = mergeBots(existingCustom, [updatedBot]);
+                  localStorage.setItem("myadvisor.customBots.v1", JSON.stringify(updatedCustom));
+                }
+              } catch {}
+              setWorkspace((w) => {
+                const nextBots = [...w.bots.filter((b) => b.id !== editor.id), updatedBot];
+                const updatedW = { ...w, bots: nextBots };
+                if (cloudUid) {
+                  void saveCloud(cloudUid, updatedW).catch(() => {});
+                }
+                return updatedW;
+              });
               setPromptBusy(false);
               setEditor(null);
             }}
