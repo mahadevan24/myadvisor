@@ -162,3 +162,73 @@ test("generic titles are identified and cleaned appropriately", () => {
   });
   assert.equal(entryFromPureHi.title, "Conversation note");
 });
+
+test("buildContext formats image and document attachments into multimodal content parts", () => {
+  const data: Chat = {
+    ...chat,
+    messages: [
+      {
+        id: "1",
+        role: "user",
+        content: "Please inspect this screenshot and document",
+        attachments: [
+          {
+            id: "att-1",
+            name: "screenshot.png",
+            type: "image/png",
+            size: 1024,
+            url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+          },
+          {
+            id: "att-2",
+            name: "report.pdf",
+            type: "application/pdf",
+            size: 2048,
+            url: "data:application/pdf;base64,JVBERi0xLjQK",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { messages } = buildContext(data, initialWorkspace.bots[0], []);
+  assert.equal(messages.length, 2);
+  const userMsg = messages[1];
+  assert.ok(Array.isArray(userMsg.content));
+  const parts = userMsg.content as any[];
+  assert.equal(parts.length, 3);
+  assert.equal(parts[0].type, "text");
+  assert.equal(parts[0].text, "Please inspect this screenshot and document");
+  assert.equal(parts[1].type, "image_url");
+  assert.equal(parts[1].image_url.url, "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==");
+  assert.equal(parts[2].type, "file");
+  assert.equal(parts[2].file.filename, "report.pdf");
+  assert.equal(parts[2].file.file_data, "data:application/pdf;base64,JVBERi0xLjQK");
+
+  // Title prompt and makeEntry capture attachments when text is empty
+  const titlePrompt = buildTitlePrompt(data.messages);
+  assert.ok(titlePrompt[1].content.includes("[Attached: screenshot.png, report.pdf]"));
+
+  const emptyTextChat: Chat = {
+    ...chat,
+    title: "hi",
+    messages: [
+      {
+        id: "1",
+        role: "user",
+        content: "",
+        attachments: [
+          {
+            id: "att-1",
+            name: "contract.pdf",
+            type: "application/pdf",
+            size: 4096,
+            url: "data:application/pdf;base64,JVBERi0=",
+          },
+        ],
+      },
+    ],
+  };
+  const entry = makeEntry(emptyTextChat);
+  assert.equal(entry.title, "contract.pdf");
+});

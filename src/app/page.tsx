@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  FileText,
   KeyRound,
   Layers3,
   MessageSquare,
@@ -29,6 +30,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  Attachment,
   Bot,
   Chat,
   Entry,
@@ -51,6 +53,120 @@ import type { Model } from "@/lib/models";
 type View = "chat" | "history" | "bots" | "wiki";
 type CommandResult = { type: "status" } | { type: "error"; message: string };
 const uid = () => crypto.randomUUID();
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function processImageFile(file: File): Promise<Attachment> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 1600;
+        let width = img.width;
+        let height = img.height;
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve({
+            id: uid(),
+            name: file.name || "image.png",
+            type: file.type || "image/png",
+            size: file.size,
+            url: dataUrl,
+          });
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const mime =
+          file.type === "image/png" && file.size < 350 * 1024
+            ? "image/png"
+            : "image/jpeg";
+        const compressedUrl = canvas.toDataURL(mime, 0.85);
+        const size = Math.round((compressedUrl.length * 3) / 4);
+        resolve({
+          id: uid(),
+          name: file.name || "pasted-image.jpg",
+          type: mime,
+          size,
+          url: compressedUrl,
+        });
+      };
+      img.onerror = () => {
+        resolve({
+          id: uid(),
+          name: file.name || "image.png",
+          type: file.type || "image/png",
+          size: file.size,
+          url: dataUrl,
+        });
+      };
+      img.src = dataUrl;
+    };
+    reader.onerror = () => {
+      resolve({
+        id: uid(),
+        name: file.name || "image.png",
+        type: file.type || "image/png",
+        size: file.size,
+        url: "",
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function processDocumentFile(file: File): Promise<Attachment> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      let type = file.type;
+      if (!type) {
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        if (ext === "pdf") type = "application/pdf";
+        else if (ext === "txt" || ext === "md" || ext === "csv" || ext === "json") type = "text/plain";
+        else if (ext === "docx") type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        else if (ext === "xlsx") type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        else if (ext === "pptx") type = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+        else type = "application/octet-stream";
+      }
+      resolve({
+        id: uid(),
+        name: file.name,
+        type,
+        size: file.size,
+        url: dataUrl,
+      });
+    };
+    reader.onerror = () => {
+      resolve({
+        id: uid(),
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        url: "",
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
 const promptIcons = ["✧", "⌘", "◎", "↗"];
 const fallbackQuickPrompts = (bot: Bot): QuickPrompt[] => {
   if (/elon\s*musk/i.test(bot.name)) return [
@@ -236,6 +352,98 @@ export default function Home() {
   const lastScrollTopRef = useRef(0);
   const touchStartY = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+
+  async function handleFiles(files: File[]) {
+    if (!files || files.length === 0) return;
+    setError("");
+    const validFiles: Attachment[] = [];
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) {
+        setError(`"${file.name}" exceeds the 20 MB size limit.`);
+        continue;
+      }
+      try {
+        if (file.type.startsWith("image/")) {
+          const att = await processImageFile(file);
+          if (att.url) validFiles.push(att);
+        } else {
+          const att = await processDocumentFile(file);
+          if (att.url) validFiles.push(att);
+        }
+      } catch {
+        setError(`Could not read "${file.name}".`);
+      }
+    }
+    if (validFiles.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...validFiles]);
+    }
+  }
+
+  function removeAttachment(id: string) {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  async function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          const ext = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+          const namedFile =
+            file.name && file.name !== "image.png"
+              ? file
+              : new File([file], `Pasted-Image-${Date.now()}.${ext}`, {
+                  type: file.type,
+                });
+          files.push(namedFile);
+        }
+      } else if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      await handleFiles(files);
+    }
+  }
+
+  useEffect(() => {
+    const onGlobalPaste = (e: ClipboardEvent) => {
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          (active.tagName === "TEXTAREA" && active !== inputRef.current))
+      ) {
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/") || items[i].kind === "file") {
+          const f = items[i].getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        void handleFiles(files);
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("paste", onGlobalPaste);
+    return () => window.removeEventListener("paste", onGlobalPaste);
+  }, []);
   const bot = workspace.bots.find((b) => b.id === botId) || workspace.bots[0];
   const chat = workspace.chats.find((c) => c.id === chatId);
   const botEntries = bot
@@ -630,6 +838,7 @@ export default function Home() {
     setBotId(selectedBot.id);
     setChatId(null);
     setInput("");
+    setPendingAttachments([]);
     setSources([]);
     setCommandResult(null);
     setView("chat");
@@ -655,23 +864,32 @@ export default function Home() {
     }));
   }
   async function request(
-    messages: { role: string; content: string }[],
+    messages: { role: string; content: any }[],
     stream = true,
     signal?: AbortSignal,
   ) {
     if (!bot) throw new Error("Create a bot before starting a conversation.");
+    const hasFiles = messages.some(
+      (m) =>
+        Array.isArray(m.content) &&
+        m.content.some((p: any) => p.type === "file"),
+    );
+    const payload: any = {
+      model: bot.model,
+      messages,
+      stream,
+      max_tokens: stream ? 2048 : 700,
+    };
+    if (hasFiles) {
+      payload.plugins = [{ id: "file-parser" }];
+    }
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${await authToken()}`,
       },
-      body: JSON.stringify({
-        model: bot.model,
-        messages,
-        stream,
-        max_tokens: stream ? 2048 : 700,
-      }),
+      body: JSON.stringify(payload),
       signal,
     });
     if (!res.ok) {
@@ -682,7 +900,7 @@ export default function Home() {
   }
   async function send(text = input) {
     const trimmed = text.trim();
-    if (!trimmed || busy || !bot) return;
+    if ((!trimmed && pendingAttachments.length === 0) || busy || !bot) return;
     if (trimmed.startsWith("/")) {
       const command = trimmed.slice(1).trim().toLowerCase();
       const commands: Record<string, () => void> = {
@@ -706,6 +924,8 @@ export default function Home() {
       setError("Save your OpenRouter key to start a conversation.");
       return;
     }
+    const currentAttachments = [...pendingAttachments];
+    setPendingAttachments([]);
     const controller = new AbortController();
     abort.current = controller;
     shouldAutoScrollRef.current = true;
@@ -720,14 +940,21 @@ export default function Home() {
           id: uid(),
           botId: bot.id,
           title: isGenericTitle(trimmed)
-            ? `Discussion with ${bot.name}`
-            : trimmed.slice(0, 65),
+            ? (currentAttachments.length > 0
+                ? currentAttachments[0].name.slice(0, 65)
+                : `Discussion with ${bot.name}`)
+            : (trimmed || currentAttachments[0]?.name || "New conversation").slice(0, 65),
           messages: [],
           summary: "",
           compactedCount: 0,
           updatedAt: Date.now(),
         };
-    current.messages.push({ id: uid(), role: "user", content: trimmed });
+    current.messages.push({
+      id: uid(),
+      role: "user",
+      content: trimmed,
+      ...(currentAttachments.length > 0 ? { attachments: currentAttachments } : {}),
+    });
     setChatId(current.id);
     updateChat(current);
     try {
@@ -951,7 +1178,17 @@ export default function Home() {
   const contextTokens = chat && bot
     ? estimateTokens(
         buildContext(chat, bot, workspace.entries)
-          .messages.map((m) => m.content)
+          .messages.map((m) => {
+            if (typeof m.content === "string") return m.content;
+            if (Array.isArray(m.content)) {
+              return m.content
+                .map((p: any) =>
+                  p.text || (p.type === "image_url" ? " [Image] " : ` [File: ${p.file?.filename || "doc"}] `),
+                )
+                .join(" ");
+            }
+            return "";
+          })
           .join(""),
       )
     : 0;
@@ -977,64 +1214,139 @@ export default function Home() {
 
   const renderComposer = () => (
     <form
-      className="composer-pill"
+      className={`composer-pill ${pendingAttachments.length > 0 ? "has-attachments" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         void send();
       }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer?.files?.length) {
+          void handleFiles(Array.from(e.dataTransfer.files));
+        }
+      }}
     >
-      <textarea
-        ref={inputRef}
-        aria-label="Message"
-        maxLength={12000}
-        rows={1}
-        placeholder="Ask, imagine, build anything…"
-        value={input}
-        onChange={(e) => {
-          setInput(e.target.value);
-          e.target.style.height = "auto";
-          e.target.style.height = `${Math.min(160, Math.max(38, e.target.scrollHeight))}px`;
-        }}
-        onKeyDown={(e) => {
-          if (
-            e.key === "Enter" &&
-            !e.shiftKey &&
-            !e.nativeEvent.isComposing
-          ) {
-            e.preventDefault();
-            void send();
-          }
-        }}
-      />
-      <div className="composer-pill-actions">
+      {pendingAttachments.length > 0 && (
+        <div className="composer-attachments">
+          {pendingAttachments.map((att) => (
+            <div className="composer-attachment-card" key={att.id}>
+              {att.type.startsWith("image/") ? (
+                <div className="composer-attachment-thumb">
+                  <img src={att.url} alt={att.name} />
+                </div>
+              ) : (
+                <div className="composer-attachment-icon">
+                  <FileText size={16} />
+                </div>
+              )}
+              <div className="composer-attachment-info">
+                <span className="composer-attachment-name" title={att.name}>
+                  {att.name}
+                </span>
+                <span className="composer-attachment-size">
+                  {formatFileSize(att.size)}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="composer-attachment-remove"
+                onClick={() => removeAttachment(att.id)}
+                aria-label={`Remove ${att.name}`}
+                title="Remove attachment"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="composer-row">
         <button
           type="button"
-          className="composer-model-pill"
+          className="composer-icon-btn attach-btn"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach documents or images"
+          title="Attach documents or images"
           disabled={busy}
-          onClick={() => openModels("chat")}
-          aria-label={`Choose model: ${bot.model}`}
         >
-          <span>{modelShortName}</span>
-          <ChevronDown size={13} />
+          <Plus size={18} />
         </button>
-        {busy ? (
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={(e) => {
+            if (e.target.files?.length) {
+              void handleFiles(Array.from(e.target.files));
+              e.target.value = "";
+            }
+          }}
+          style={{ display: "none" }}
+          multiple
+          accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.md,text/*"
+        />
+        <textarea
+          ref={inputRef}
+          aria-label="Message"
+          maxLength={12000}
+          rows={1}
+          placeholder={
+            pendingAttachments.length > 0
+              ? "Add instructions or ask a question…"
+              : "Ask, imagine, build anything…"
+          }
+          value={input}
+          onPaste={handlePaste}
+          onChange={(e) => {
+            setInput(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = `${Math.min(160, Math.max(38, e.target.scrollHeight))}px`;
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+        />
+        <div className="composer-pill-actions">
           <button
             type="button"
-            className="composer-action-btn stop"
-            aria-label="Stop generation"
-            onClick={() => abort.current?.abort()}
+            className="composer-model-pill"
+            disabled={busy}
+            onClick={() => openModels("chat")}
+            aria-label={`Choose model: ${bot.model}`}
           >
-            <Square size={14} />
+            <span>{modelShortName}</span>
+            <ChevronDown size={13} />
           </button>
-        ) : (
-          <button
-            className="composer-action-btn send"
-            disabled={!input.trim() || !ready}
-            aria-label="Send message"
-          >
-            <ArrowUp size={18} />
-          </button>
-        )}
+          {busy ? (
+            <button
+              type="button"
+              className="composer-action-btn stop"
+              aria-label="Stop generation"
+              onClick={() => abort.current?.abort()}
+            >
+              <Square size={14} />
+            </button>
+          ) : (
+            <button
+              className="composer-action-btn send"
+              disabled={(!input.trim() && pendingAttachments.length === 0) || !ready}
+              aria-label="Send message"
+            >
+              <ArrowUp size={18} />
+            </button>
+          )}
+        </div>
       </div>
     </form>
   );
@@ -1236,11 +1548,64 @@ export default function Home() {
                                   : ""}
                               </span>
                             </div>
-                            <div className="markdown">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {m.content || "Thinking…"}
-                              </ReactMarkdown>
-                            </div>
+                            {m.attachments && m.attachments.length > 0 && (
+                              <div className="message-attachments">
+                                {m.attachments.map((att) =>
+                                  att.type.startsWith("image/") ? (
+                                    <div
+                                      className="message-attachment-image-wrap"
+                                      key={att.id}
+                                    >
+                                      <img
+                                        src={att.url}
+                                        alt={att.name}
+                                        className="message-attachment-image"
+                                        onClick={() => {
+                                          const w = window.open("");
+                                          w?.document.write(
+                                            `<title>${att.name}</title><body style="margin:0;background:#0e1013;display:grid;place-items:center;min-height:100vh;"><img src="${att.url}" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;" /></body>`,
+                                          );
+                                        }}
+                                        title="Click to view full image"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <a
+                                      key={att.id}
+                                      href={att.url}
+                                      download={att.name}
+                                      className="message-attachment-doc"
+                                      title={`Download ${att.name}`}
+                                    >
+                                      <div className="doc-icon">
+                                        <FileText size={18} />
+                                      </div>
+                                      <div className="doc-meta">
+                                        <span className="doc-name">{att.name}</span>
+                                        <span className="doc-size">
+                                          {formatFileSize(att.size)}
+                                        </span>
+                                      </div>
+                                      <Download size={14} className="doc-dl" />
+                                    </a>
+                                  ),
+                                )}
+                              </div>
+                            )}
+                            {m.content && (
+                              <div className="markdown">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {m.content}
+                                </ReactMarkdown>
+                              </div>
+                            )}
+                            {!m.content && m.role === "assistant" && (
+                              <div className="markdown">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {"Thinking…"}
+                                </ReactMarkdown>
+                              </div>
+                            )}
                           </div>
                         </article>
                       ))}

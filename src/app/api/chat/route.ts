@@ -2,19 +2,38 @@ import { z } from "zod";
 import { getOpenRouterKey, requireUser } from "@/lib/firebase-admin";
 export const runtime = "nodejs";
 export const maxDuration = 120;
+const contentPartSchema = z.union([
+  z.object({
+    type: z.literal("text"),
+    text: z.string(),
+  }),
+  z.object({
+    type: z.literal("image_url"),
+    image_url: z.object({
+      url: z.string(),
+    }),
+  }),
+  z.object({
+    type: z.literal("file"),
+    file: z.object({
+      filename: z.string().optional(),
+      file_data: z.string().optional(),
+      file_url: z.string().optional(),
+    }),
+  }),
+]);
+
+const messageSchema = z.object({
+  role: z.enum(["system", "user", "assistant"]),
+  content: z.union([z.string(), z.array(contentPartSchema)]),
+});
+
 const schema = z.object({
   model: z.string().min(1).max(150),
-  messages: z
-    .array(
-      z.object({
-        role: z.enum(["system", "user", "assistant"]),
-        content: z.string().max(40000),
-      }),
-    )
-    .min(1)
-    .max(80),
+  messages: z.array(messageSchema).min(1).max(80),
   stream: z.boolean().default(true),
   max_tokens: z.number().int().min(64).max(4096).default(2048),
+  plugins: z.array(z.any()).optional(),
 });
 export async function POST(req: Request) {
   let uid: string;
@@ -32,11 +51,12 @@ export async function POST(req: Request) {
       { error: "Save your OpenRouter API key in Settings." },
       { status: 403 },
     );
-  if (Number(req.headers.get("content-length") || 0) > 180000)
+  const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+  if (Number(req.headers.get("content-length") || 0) > MAX_REQUEST_BYTES)
     return Response.json({ error: "Request too large." }, { status: 413 });
   try {
     const raw = await req.text();
-    if (raw.length > 180000)
+    if (raw.length > MAX_REQUEST_BYTES)
       return Response.json({ error: "Request too large." }, { status: 413 });
     const parsed = schema.safeParse(JSON.parse(raw));
     if (!parsed.success)
