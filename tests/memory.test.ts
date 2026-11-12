@@ -9,6 +9,7 @@ import {
   isGenericTitle,
   isGreetingTitle,
   cleanTitle,
+  deriveFallbackTitle,
   buildTitlePrompt,
   isGreeting,
   type Chat,
@@ -162,6 +163,30 @@ test("generic titles are identified and cleaned appropriately", () => {
     ],
   });
   assert.equal(entryFromPureHi.title, "Conversation note");
+
+  // cleanTitle rejects generic greeting titles like "Discussion with Elon Musk"
+  assert.equal(cleanTitle("Discussion with Elon Musk", "Rocketry goals"), "Rocketry goals");
+  assert.equal(cleanTitle("Conversation with Nova", "Neural nets"), "Neural nets");
+
+  // deriveFallbackTitle generates unique, substantive titles from conversations
+  const derivedSubstantive = deriveFallbackTitle([
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "Good morning! What are your goals?" },
+    { role: "user", content: "Complete FAA drone certification" },
+  ], "Elon Musk");
+  assert.equal(derivedSubstantive, "Complete FAA drone certification");
+
+  const derivedMorning = deriveFallbackTitle([
+    { role: "user", content: "morning pages" },
+    { role: "assistant", content: "Let's be real about your goals." },
+  ], "Elon Musk", 1700000000000);
+  assert.ok(derivedMorning.startsWith("Morning check-in"));
+
+  const derivedCheckIn = deriveFallbackTitle([
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "Hello!" },
+  ], "Elon Musk", 1700000000000);
+  assert.ok(derivedCheckIn.startsWith("Check-in with Elon Musk"));
 });
 
 test("buildContext formats image and document attachments into multimodal content parts", () => {
@@ -326,4 +351,55 @@ test("buildContext instructs bot to ask about user life journey / recent progres
   assert.ok(systemPrompt.includes("harsh in truth"));
   assert.ok(systemPrompt.includes("goals"));
   assert.ok(systemPrompt.includes("life journey"));
+});
+
+test("curated bot collection includes all requested mentor categories and valid attributes", () => {
+  const { BOT_CATEGORIES, CURATED_BOTS } = require("../src/lib/curated-bots");
+
+  assert.ok(Array.isArray(CURATED_BOTS));
+  assert.ok(CURATED_BOTS.length >= 26);
+
+  const categories = new Set(CURATED_BOTS.map((b: any) => b.category));
+  for (const cat of BOT_CATEGORIES) {
+    assert.ok(categories.has(cat), `Missing expected category: ${cat}`);
+  }
+
+  const expectedNames = [
+    "Steve Jobs",
+    "Jeff Bezos",
+    "Warren Buffett & Charlie Munger",
+    "Naval Ravikant",
+    "Paul Graham",
+    "Peter Thiel",
+    "Ray Dalio",
+    "Tim Ferriss",
+    "James Clear",
+    "Cal Newport",
+    "David Goggins",
+    "Jocko Willink",
+    "Marcus Aurelius",
+    "Socrates",
+    "Buddha & Thich Nhat Hanh",
+    "Viktor Frankl",
+    "Abraham Lincoln",
+    "Nelson Mandela",
+    "Winston Churchill",
+    "Dale Carnegie",
+    "Albert Einstein",
+    "Richard Feynman",
+    "Charlie Munger",
+    "Arnold Schwarzenegger",
+    "Andrew Huberman",
+    "Osho",
+    "Eckhart Tolle",
+  ];
+
+  for (const name of expectedNames) {
+    const found = CURATED_BOTS.find((b: any) => b.name === name);
+    assert.ok(found, `Expected mentor bot ${name} not found`);
+    assert.ok(found.instructions.length > 20);
+    assert.ok(found.category);
+    assert.ok(found.color);
+    assert.ok(found.symbol);
+  }
 });

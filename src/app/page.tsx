@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   ArrowUpRight,
@@ -25,10 +25,12 @@ import {
   Square,
   Star,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { BOT_CATEGORIES, CURATED_BOTS } from "@/lib/curated-bots";
 import {
   Attachment,
   Bot,
@@ -39,6 +41,7 @@ import {
   buildContext,
   buildTitlePrompt,
   cleanTitle,
+  deriveFallbackTitle,
   estimateTokens,
   initialWorkspace,
   isGenericTitle,
@@ -248,6 +251,13 @@ function displayTitle(title?: string | null, fallback = "Conversation"): string 
   return title!;
 }
 
+function getChatDisplayTitle(chat: Chat, botName?: string): string {
+  if (!chat.title || isGenericTitle(chat.title) || isGreetingTitle(chat.title)) {
+    return deriveFallbackTitle(chat.messages, botName, chat.updatedAt);
+  }
+  return chat.title;
+}
+
 export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace>(() => {
     const cached = getStoredWorkspace();
@@ -308,6 +318,114 @@ export default function Home() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [entry, setEntry] = useState<Entry | null>(null);
+  const [botPickerOpen, setBotPickerOpen] = useState(false);
+  const botPickerRef = useRef<HTMLDivElement>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importJsonText, setImportJsonText] = useState("");
+  const [importError, setImportError] = useState("");
+  const [importSuccess, setImportSuccess] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (botPickerRef.current && !botPickerRef.current.contains(e.target as Node)) {
+        setBotPickerOpen(false);
+      }
+    }
+    if (botPickerOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [botPickerOpen]);
+
+  const groupedBots = useMemo(() => {
+    const groups: Record<string, Bot[]> = {};
+    for (const b of workspace.bots) {
+      const cat = b.category?.trim() || "General";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(b);
+    }
+    return groups;
+  }, [workspace.bots]);
+
+  function importBotsList(botsToImport: Bot[]) {
+    setWorkspace((current) => {
+      const merged = [...current.bots];
+      for (const b of botsToImport) {
+        const idx = merged.findIndex(
+          (existing) =>
+            existing.id === b.id ||
+            existing.name.toLowerCase().trim() === b.name.toLowerCase().trim()
+        );
+        if (idx >= 0) {
+          merged[idx] = { ...merged[idx], ...b };
+        } else {
+          merged.push(b);
+        }
+      }
+      const updated = { ...current, bots: merged };
+      try {
+        const currentUid = localStorage.getItem("myadvisor.lastUid") || "guest";
+        localStorage.setItem(
+          `myadvisor.workspace.v1.${currentUid}`,
+          JSON.stringify(updated)
+        );
+        if (currentUid && currentUid !== "guest") {
+          void saveCloud(currentUid, updated).catch(() => {});
+        }
+      } catch {}
+      return updated;
+    });
+  }
+
+  function handleImportJson(jsonText: string) {
+    try {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch {
+        throw new Error("Invalid JSON format. Please paste valid JSON.");
+      }
+
+      const rawList: any[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.bots)
+        ? parsed.bots
+        : [parsed];
+
+      if (!rawList.length || !rawList[0] || typeof rawList[0] !== "object") {
+        throw new Error("No valid bot objects found in the JSON.");
+      }
+
+      const validBots: Bot[] = rawList.map((item: any, idx: number) => {
+        if (!item.name || typeof item.name !== "string") {
+          throw new Error(`Bot at index ${idx} is missing a valid 'name'.`);
+        }
+        return {
+          id: item.id || `bot-${uid()}`,
+          name: item.name.trim(),
+          category: item.category?.trim() || "General",
+          description: item.description?.trim() || `Discussion with ${item.name}`,
+          instructions: item.instructions?.trim() || `You are ${item.name}.`,
+          model: item.model || "openai/gpt-4o-mini",
+          color: item.color || "mint",
+          symbol: item.symbol || "✳",
+          quickPrompts: Array.isArray(item.quickPrompts) ? item.quickPrompts : undefined,
+        };
+      });
+
+      importBotsList(validBots);
+      setImportSuccess(`Successfully imported ${validBots.length} bot${validBots.length === 1 ? "" : "s"}!`);
+      setImportError("");
+      setTimeout(() => {
+        setImportModalOpen(false);
+        setImportSuccess("");
+        setImportJsonText("");
+      }, 1200);
+    } catch (err: any) {
+      setImportError(err.message || "Failed to import bots.");
+    }
+  }
   const [cloudUid, setCloudUid] = useState<string>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -1346,6 +1464,89 @@ export default function Home() {
           }}
         />
         <div className="composer-pill-actions">
+          <div className="composer-dropdown-wrap" ref={botPickerRef}>
+            <button
+              type="button"
+              className="composer-bot-pill"
+              disabled={busy}
+              onClick={() => setBotPickerOpen((v) => !v)}
+              aria-label={`Choose bot: ${bot.name}`}
+              aria-expanded={botPickerOpen}
+            >
+              <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
+              <span className="composer-bot-name">{bot.name}</span>
+              <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
+            </button>
+            {botPickerOpen && (
+              <div className="composer-bot-dropdown" role="menu">
+                <div className="dropdown-section-label">CHOOSE BOT BY CATEGORY</div>
+                {Object.entries(groupedBots).map(([cat, botsInCat]) => (
+                  <div key={cat} className="dropdown-category-group">
+                    <div className="dropdown-category-header">
+                      <span>{cat}</span>
+                      <span className="dropdown-category-count">{botsInCat.length}</span>
+                    </div>
+                    {botsInCat.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        role="menuitem"
+                        className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
+                        onClick={() => {
+                          setBotId(b.id);
+                          setBotPickerOpen(false);
+                        }}
+                      >
+                        <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                        <div className="bot-option-info">
+                          <span className="bot-option-name">{b.name}</span>
+                          <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
+                        </div>
+                        {b.id === defaultBotId && (
+                          <span className="bot-option-default" title="Default bot">
+                            <Star size={11} fill="currentColor" />
+                          </span>
+                        )}
+                        {b.id === bot.id && <Check size={14} className="bot-option-check" />}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                <div className="dropdown-divider" />
+                <div className="dropdown-footer-actions">
+                  <button
+                    type="button"
+                    className="composer-bot-create-btn"
+                    onClick={() => {
+                      setBotPickerOpen(false);
+                      setEditor({
+                        id: uid(),
+                        name: "",
+                        category: "Business and entrepreneurship",
+                        description: "",
+                        instructions: "",
+                        model: "openai/gpt-4o-mini",
+                        color: "mint",
+                        symbol: "✳",
+                      });
+                    }}
+                  >
+                    <Plus size={14} /> Create bot
+                  </button>
+                  <button
+                    type="button"
+                    className="composer-bot-create-btn"
+                    onClick={() => {
+                      setBotPickerOpen(false);
+                      setImportModalOpen(true);
+                    }}
+                  >
+                    <Upload size={14} /> Import bots
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             className="composer-model-pill"
@@ -1428,7 +1629,6 @@ export default function Home() {
             [
               { id: "history", label: "Chat history", icon: MessageSquare },
               { id: "bots", label: "My bots", icon: Layers3 },
-              { id: "wiki", label: "Knowledge wiki", icon: BookOpen },
             ] as const
           ).map((n) => (
             <button
@@ -1438,77 +1638,77 @@ export default function Home() {
             >
               <n.icon size={17} />
               {n.label}
-              {n.id === "wiki" && (
-                <span className="count">{workspace.entries.length}</span>
+              {n.id === "history" && (
+                <span className="count">{workspace.chats.length}</span>
               )}
             </button>
           ))}
         </nav>
         <div className="nav-label bot-label">
           YOUR BOTS{" "}
-          <button
-            aria-label="Create bot"
-            onClick={() =>
-              setEditor({
-                id: uid(),
-                name: "",
-                description: "",
-                instructions: "",
-                model: "openai/gpt-4o-mini",
-                color: "mint",
-                symbol: "✳",
-              })
-            }
-          >
-            <Plus size={15} />
-          </button>
-        </div>
-        {workspace.bots.map((b) => (
-          <div key={b.id} className="bot-nav-row">
+          <div className="bot-label-actions">
             <button
-              disabled={busy}
-              onClick={() => newChat(b.id)}
-              className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
+              aria-label="Import bots"
+              title="Import bots from JSON"
+              onClick={() => setImportModalOpen(true)}
             >
-              <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-              <span className="bot-nav-text">{b.name}</span>
-              <span className="online-dot" />
+              <Upload size={14} />
             </button>
             <button
-              type="button"
-              className={`bot-default-star ${b.id === defaultBotId ? "active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setDefaultBot(b.id);
-              }}
-              title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
-              aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+              aria-label="Create bot"
+              title="Create new bot"
+              onClick={() =>
+                setEditor({
+                  id: uid(),
+                  name: "",
+                  category: "Business and entrepreneurship",
+                  description: "",
+                  instructions: "",
+                  model: "openai/gpt-4o-mini",
+                  color: "mint",
+                  symbol: "✳",
+                })
+              }
             >
-              <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+              <Plus size={15} />
             </button>
           </div>
-        ))}
-        <div className="nav-label recent-label">RECENT CONVERSATIONS</div>
-        <div className="recent-list">
-          {workspace.chats.length ? (
-            workspace.chats.slice(0, 7).map((c) => (
-              <button
-                disabled={busy}
-                key={c.id}
-                className={chatId === c.id ? "current" : ""}
-                onClick={() => openChat(c.id)}
-              >
-                <MessageSquare size={13} />
-                <span>{displayTitle(c.title)}</span>
-              </button>
-            ))
-          ) : (
-            <p>
-              Your next great idea
-              <br />
-              starts with a conversation.
-            </p>
-          )}
+        </div>
+        <div className="sidebar-bots-scroll">
+          {Object.entries(groupedBots).map(([cat, botsInCat]) => (
+            <div key={cat} className="sidebar-bot-category">
+              <div className="sidebar-category-header">
+                <span className="sidebar-category-title">{cat}</span>
+                <span className="sidebar-category-count">{botsInCat.length}</span>
+              </div>
+              {botsInCat.map((b) => (
+                <div key={b.id} className="bot-nav-row">
+                  <button
+                    disabled={busy}
+                    onClick={() => newChat(b.id)}
+                    className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
+                    title={`${b.name} (${cat})`}
+                  >
+                    <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                    <span className="bot-nav-text">{b.name}</span>
+                    <span className="online-dot" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`bot-default-star ${b.id === defaultBotId ? "active" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDefaultBot(b.id);
+                    }}
+                    title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
+                    aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+                  >
+                    <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
         <div className="sidebar-bottom">
           <button className="settings-link" onClick={() => setSettings(true)}>
@@ -1736,42 +1936,75 @@ export default function Home() {
                 <h1>
                   {view === "history"
                     ? "Every conversation, in one place."
-                    : view === "bots"
-                    ? "A mind for every mood."
-                    : "Your conversations, connected."}
+                    : "A mind for every mood."}
                 </h1>
                 <p>
                   {view === "history"
                     ? "Pick up a thought where you left it."
-                    : view === "bots"
-                    ? "Give your thinking partners a personality and a purpose."
-                    : "A living library of ideas, built one conversation at a time."}
+                    : "Give your thinking partners a personality and a purpose."}
                 </p>
               </div>
               {view === "bots" && (
-                <button
-                  className="primary-button"
-                  onClick={() =>
-                    setEditor({
-                      id: uid(),
-                      name: "",
-                      description: "",
-                      instructions: "",
-                      model: "openai/gpt-4o-mini",
-                      color: "mint",
-                      symbol: "✳",
-                    })
-                  }
-                >
-                  <Plus size={16} /> Create bot
-                </button>
+                <div className="library-header-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => importBotsList(CURATED_BOTS)}
+                    title="Load all 27 business, productivity, mindset, leadership, science, health, and spiritual mentors"
+                  >
+                    <Sparkles size={16} /> Add 27 Curated Mentors
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={() => setImportModalOpen(true)}
+                  >
+                    <Upload size={16} /> Import bots
+                  </button>
+                  <button
+                    className="primary-button"
+                    onClick={() =>
+                      setEditor({
+                        id: uid(),
+                        name: "",
+                        category: "Business and entrepreneurship",
+                        description: "",
+                        instructions: "",
+                        model: "openai/gpt-4o-mini",
+                        color: "mint",
+                        symbol: "✳",
+                      })
+                    }
+                  >
+                    <Plus size={16} /> Create bot
+                  </button>
+                </div>
               )}
             </div>
-            {view === "wiki" && (
+            {view === "bots" && (
+              <div className="bot-category-filter-bar">
+                <button
+                  type="button"
+                  className={`category-filter-tab ${selectedCategoryFilter === "All" ? "active" : ""}`}
+                  onClick={() => setSelectedCategoryFilter("All")}
+                >
+                  All ({workspace.bots.length})
+                </button>
+                {Object.entries(groupedBots).map(([cat, botsInCat]) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`category-filter-tab ${selectedCategoryFilter === cat ? "active" : ""}`}
+                    onClick={() => setSelectedCategoryFilter(cat)}
+                  >
+                    {cat} ({botsInCat.length})
+                  </button>
+                ))}
+              </div>
+            )}
+            {view === "history" && (
               <label className="search-box">
                 <Search size={17} />
                 <input
-                  placeholder="Search your knowledge…"
+                  placeholder="Search conversations, topics, or messages…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -1779,83 +2012,89 @@ export default function Home() {
             )}
             {view === "history" ? (
               <div className="library-grid history-grid">
-                {workspace.chats.length ? workspace.chats.map((c) => (
-                  <button className="entry-card history-card" key={c.id} onClick={() => openChat(c.id)}>
-                    <MessageSquare size={21} />
-                    <span className="entry-bot">{workspace.bots.find((b) => b.id === c.botId)?.name} · CONVERSATION</span>
-                    <h2>{displayTitle(c.title)}</h2>
-                    <p>{c.messages.at(-1)?.content?.slice(0, 170) || "No messages yet."}</p>
-                    <footer>{new Date(c.updatedAt).toLocaleDateString()} <ArrowUpRight size={16} /></footer>
-                  </button>
-                )) : (
-                  <div className="library-empty"><MessageSquare size={40} /><h2>No conversations yet.</h2><p>Start a new chat and your history will appear here.</p></div>
-                )}
+                {(() => {
+                  const query = search.trim().toLowerCase();
+                  const filtered = workspace.chats.filter((c) => {
+                    if (!query) return true;
+                    const botName = workspace.bots.find((b) => b.id === c.botId)?.name || "";
+                    const title = getChatDisplayTitle(c, botName).toLowerCase();
+                    const hasTitleMatch = title.includes(query);
+                    const hasBotMatch = botName.toLowerCase().includes(query);
+                    const hasMsgMatch = c.messages.some((m) => m.content.toLowerCase().includes(query));
+                    return hasTitleMatch || hasBotMatch || hasMsgMatch;
+                  });
+
+                  if (!filtered.length) {
+                    return (
+                      <div className="library-empty">
+                        <MessageSquare size={40} />
+                        <h2>{query ? "No matching conversations found." : "No conversations yet."}</h2>
+                        <p>{query ? "Try searching for a different keyword or topic." : "Start a new chat and your history will appear here."}</p>
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((c) => {
+                    const botObj = workspace.bots.find((b) => b.id === c.botId);
+                    const title = getChatDisplayTitle(c, botObj?.name);
+                    const snippet = c.messages.at(-1)?.content?.slice(0, 170) || "No messages yet.";
+                    return (
+                      <button className="entry-card history-card" key={c.id} onClick={() => openChat(c.id)}>
+                        <MessageSquare size={21} />
+                        <span className="entry-bot">{botObj?.name || "Bot"} · CONVERSATION</span>
+                        <h2>{title}</h2>
+                        <p>{snippet}</p>
+                        <footer>{new Date(c.updatedAt).toLocaleDateString()} <ArrowUpRight size={16} /></footer>
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             ) : (
-            <div className="library-grid">
-              {view === "bots"
-                ? workspace.bots.map((b) => (
-                    <article className="bot-card" key={b.id}>
-                      <div className="card-top-row">
-                        <span className={`large-bot ${b.color}`}>{b.symbol}</span>
-                        <div className="card-actions">
-                          <button
-                            type="button"
-                            className={`card-default-pill ${b.id === defaultBotId ? "active" : ""}`}
-                            onClick={() => setDefaultBot(b.id)}
-                            title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
-                            aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
-                          >
-                            <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
-                            <span>{b.id === defaultBotId ? "Default" : "Set default"}</span>
-                          </button>
-                          <button
-                            className="card-settings icon-button"
-                            aria-label={`Edit ${b.name}`}
-                            onClick={() => setEditor({ ...b })}
-                          >
-                            <Settings2 size={17} />
-                          </button>
-                        </div>
-                      </div>
-                      <h2>{b.name}</h2>
-                      <p>{b.description}</p>
-                      <span className="model-pill">{b.model}</span>
-                      <button
-                        className="card-chat"
-                        disabled={busy}
-                        onClick={() => newChat(b.id)}
-                      >
-                        Start a conversation <ArrowUpRight size={16} />
-                      </button>
-                    </article>
-                  ))
-                : workspace.entries
-                    .filter((e) =>
-                      (displayTitle(e.title, "Conversation Note") + " " + e.content)
-                        .toLowerCase()
-                        .includes(search.toLowerCase()),
+              <div className="library-grid">
+                {(selectedCategoryFilter === "All"
+                  ? workspace.bots
+                  : workspace.bots.filter(
+                      (b) => (b.category?.trim() || "General") === selectedCategoryFilter
                     )
-                    .map((e) => (
-                      <button
-                        className="entry-card"
-                        key={e.id}
-                        onClick={() => setEntry(e)}
-                      >
-                        <BookOpen size={21} />
-                        <span className="entry-bot">
-                          {workspace.bots.find((b) => b.id === e.botId)?.name} ·
-                          CONVERSATION NOTE
-                        </span>
-                        <h2>{displayTitle(e.title, "Conversation Note")}</h2>
-                        <p>{e.content.slice(0, 170)}…</p>
-                        <footer>
-                          {new Date(e.updatedAt).toLocaleDateString()}
-                          <ArrowUpRight size={16} />
-                        </footer>
-                      </button>
-                    ))}
-            </div>
+                ).map((b) => (
+                  <article className="bot-card" key={b.id}>
+                    <div className="card-top-row">
+                      <span className={`large-bot ${b.color}`}>{b.symbol}</span>
+                      <div className="card-actions">
+                        <button
+                          type="button"
+                          className={`card-default-pill ${b.id === defaultBotId ? "active" : ""}`}
+                          onClick={() => setDefaultBot(b.id)}
+                          title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
+                          aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+                        >
+                          <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+                          <span>{b.id === defaultBotId ? "Default" : "Set default"}</span>
+                        </button>
+                        <button
+                          className="card-settings icon-button"
+                          aria-label={`Edit ${b.name}`}
+                          onClick={() => setEditor({ ...b })}
+                        >
+                          <Settings2 size={17} />
+                        </button>
+                      </div>
+                    </div>
+                    <h2>{b.name}</h2>
+                    <span className="bot-card-category-badge">{b.category || "General"}</span>
+                    <p>{b.description}</p>
+                    <span className="model-pill">{b.model}</span>
+                    <button
+                      className="card-chat"
+                      disabled={busy}
+                      onClick={() => newChat(b.id)}
+                    >
+                      Start a conversation <ArrowUpRight size={16} />
+                    </button>
+                  </article>
+                ))}
+              </div>
             )}
             {view === "bots" && !workspace.bots.length && (
               <div className="library-empty">
@@ -2061,6 +2300,23 @@ export default function Home() {
               />
             </label>
             <label className="field-label">
+              Category
+              <input
+                list="editor-categories"
+                maxLength={60}
+                value={editor.category || ""}
+                onChange={(e) =>
+                  setEditor({ ...editor, category: e.target.value })
+                }
+                placeholder="e.g. Business and entrepreneurship"
+              />
+              <datalist id="editor-categories">
+                {BOT_CATEGORIES.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </label>
+            <label className="field-label">
               Short description
               <input
                 required
@@ -2227,6 +2483,118 @@ export default function Home() {
                 }}
               >
                 <Trash2 size={17} />
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {importModalOpen && (
+        <div className="modal-backdrop" onClick={() => setImportModalOpen(false)}>
+          <section
+            className="modal import-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close icon-button"
+              aria-label="Close import dialog"
+              onClick={() => {
+                setImportModalOpen(false);
+                setImportError("");
+                setImportSuccess("");
+              }}
+            >
+              <X size={20} />
+            </button>
+            <div className="modal-eyebrow">
+              <Upload size={16} /> BOTS IMPORT
+            </div>
+            <h2 id="import-title">Import Thinking Partners</h2>
+            <p>
+              Paste a JSON array of bots, upload a <code>.json</code> file, or load the curated mentor suite.
+            </p>
+
+            {importError && (
+              <div role="alert" className="error-banner">
+                {importError}
+              </div>
+            )}
+            {importSuccess && (
+              <div role="status" className="success-banner">
+                {importSuccess}
+              </div>
+            )}
+
+            <div className="import-quick-row">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setImportJsonText(JSON.stringify(CURATED_BOTS, null, 2));
+                  setImportError("");
+                }}
+              >
+                <Sparkles size={15} /> Paste 27 Curated Mentors JSON
+              </button>
+              <label className="secondary-button file-upload-btn">
+                <Upload size={15} /> Choose .JSON File
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string;
+                      if (text) {
+                        setImportJsonText(text);
+                        setImportError("");
+                      }
+                    };
+                    reader.readAsText(file);
+                  }}
+                />
+              </label>
+            </div>
+
+            <label className="field-label">
+              Bots JSON
+              <textarea
+                rows={10}
+                className="import-textarea"
+                placeholder="[ { &quot;name&quot;: &quot;Steve Jobs&quot;, &quot;category&quot;: &quot;Business and entrepreneurship&quot;, ... } ]"
+                value={importJsonText}
+                onChange={(e) => {
+                  setImportJsonText(e.target.value);
+                  setImportError("");
+                }}
+              />
+            </label>
+
+            <div className="import-modal-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setImportModalOpen(false);
+                  setImportError("");
+                  setImportSuccess("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!importJsonText.trim()}
+                onClick={() => handleImportJson(importJsonText)}
+              >
+                <Check size={16} /> Import Bots
               </button>
             </div>
           </section>

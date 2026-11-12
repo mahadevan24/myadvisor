@@ -1,3 +1,5 @@
+import { CURATED_BOTS } from "./curated-bots";
+
 export type Attachment = {
   id: string;
   name: string;
@@ -20,6 +22,7 @@ export type Bot = {
   color: string;
   symbol: string;
   quickPrompts?: QuickPrompt[];
+  category?: string;
 };
 export type QuickPrompt = {
   title: string;
@@ -55,6 +58,7 @@ export const initialWorkspace: Workspace = {
     {
       id: "nova",
       name: "Nova",
+      category: "General",
       description: "Your curious, all-purpose thinking partner.",
       instructions:
         "You are Nova, a curious, thoughtful thinking partner. Be clear, warm and concise. Help explore ideas, ask useful questions, and be honest about uncertainty.",
@@ -62,26 +66,7 @@ export const initialWorkspace: Workspace = {
       color: "mint",
       symbol: "✳",
     },
-    {
-      id: "cipher",
-      name: "Cipher",
-      description: "Deep technical thinking. Elegant solutions.",
-      instructions:
-        "You are Cipher, an expert coding and systems thinking companion. Explain first principles and give precise, practical examples. This is a chat-only workspace; do not claim to execute code or use tools.",
-      model: "openai/gpt-4o-mini",
-      color: "purple",
-      symbol: "⌘",
-    },
-    {
-      id: "echo",
-      name: "Echo",
-      description: "A little perspective. A lot of possibility.",
-      instructions:
-        "You are Echo, a creative writing and brainstorming companion. Offer fresh perspectives and help refine ideas with concrete suggestions.",
-      model: "openai/gpt-4o-mini",
-      color: "peach",
-      symbol: "◈",
-    },
+    ...CURATED_BOTS,
   ],
   chats: [],
   entries: [],
@@ -320,10 +305,62 @@ export function cleanTitle(raw: string, fallback = "New conversation"): string {
 
   cleaned = cleaned.replace(/[.!?]+$/, "").trim();
 
-  if (!cleaned || isGenericTitle(cleaned)) {
+  if (!cleaned || isGenericTitle(cleaned) || isGreetingTitle(cleaned)) {
     return fallback;
   }
   return cleaned.slice(0, 65);
+}
+
+export function deriveFallbackTitle(
+  messages?: Message[] | { role: string; content?: string; attachments?: Attachment[] }[],
+  botName?: string,
+  timestamp?: number,
+): string {
+  if (!messages || messages.length === 0) {
+    return botName ? `Conversation with ${botName}` : "New conversation";
+  }
+
+  const substantiveUserMsg = messages.find(
+    (m) =>
+      m.role === "user" &&
+      m.content &&
+      m.content.trim() &&
+      !isGreeting(m.content) &&
+      !isGenericTitle(m.content) &&
+      !isGreetingTitle(m.content),
+  );
+
+  if (substantiveUserMsg?.content) {
+    const text = substantiveUserMsg.content
+      .trim()
+      .replace(/^["'`#*]+|["'`#*!?.-\s]+$/g, "")
+      .replace(/\s+/g, " ")
+      .slice(0, 50);
+    if (text) return text;
+  }
+
+  const userMsgWithFile = messages.find(
+    (m) => m.role === "user" && m.attachments && m.attachments.length > 0,
+  );
+  if (userMsgWithFile?.attachments?.[0]?.name) {
+    return userMsgWithFile.attachments[0].name.slice(0, 50);
+  }
+
+  const firstUserMsg = messages.find((m) => m.role === "user" && m.content?.trim());
+  const isMorning = firstUserMsg?.content
+    ? /morning/i.test(firstUserMsg.content)
+    : false;
+
+  const dateStr = new Date(timestamp || Date.now()).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+
+  if (isMorning) {
+    return `Morning check-in (${dateStr})`;
+  }
+
+  return botName ? `Check-in with ${botName} (${dateStr})` : `Check-in (${dateStr})`;
 }
 
 export function buildTitlePrompt(
@@ -351,7 +388,7 @@ export function buildTitlePrompt(
     {
       role: "system" as const,
       content:
-        "Generate a short, concise, descriptive title (2 to 5 words) capturing the gist of this conversation. Do not use quotes, punctuation, prefixes like 'Title:', markdown, or generic greetings like 'Hi'. Return only the plain title text.",
+        "Generate a short, concise, descriptive title (2 to 5 words) capturing the gist and specific topic of this conversation. Do not use quotes, punctuation, prefixes like 'Title:', markdown, or generic phrases like 'Discussion with Bot'. Return only the plain title text.",
     },
     {
       role: "user" as const,
@@ -361,8 +398,8 @@ export function buildTitlePrompt(
 }
 
 export function makeEntry(chat: Chat): Entry {
-  const safeTitle = isGenericTitle(chat.title)
-    ? (chat.messages.find((m) => m.role === "user" && !isGenericTitle(m.content))?.content?.slice(0, 60)?.trim() ||
+  const safeTitle = isGenericTitle(chat.title) || isGreetingTitle(chat.title)
+    ? (chat.messages.find((m) => m.role === "user" && !isGenericTitle(m.content) && !isGreeting(m.content))?.content?.slice(0, 60)?.trim() ||
        chat.messages.find((m) => m.role === "user" && m.attachments?.length)?.attachments?.[0]?.name?.slice(0, 60)?.trim() ||
        "Conversation note")
     : chat.title;
