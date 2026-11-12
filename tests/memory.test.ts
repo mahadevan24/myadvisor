@@ -10,6 +10,7 @@ import {
   isGreetingTitle,
   cleanTitle,
   buildTitlePrompt,
+  isGreeting,
   type Chat,
   type Entry,
 } from "../src/lib/memory";
@@ -231,4 +232,98 @@ test("buildContext formats image and document attachments into multimodal conten
   };
   const entry = makeEntry(emptyTextChat);
   assert.equal(entry.title, "contract.pdf");
+});
+
+test("greeting detection identifies greetings and rejects substantive questions", () => {
+  assert.ok(isGreeting("hi"));
+  assert.ok(isGreeting("Hi!"));
+  assert.ok(isGreeting("hi :)"));
+  assert.ok(isGreeting("hello"));
+  assert.ok(isGreeting("hey there"));
+  assert.ok(isGreeting("hey Nova"));
+  assert.ok(isGreeting("Good morning!"));
+  assert.ok(isGreeting("Good morning Nova"));
+  assert.ok(isGreeting("morning"));
+  assert.ok(isGreeting("morning pages"));
+  assert.ok(isGreeting("morning check in"));
+  assert.ok(isGreeting("hi morning pages"));
+  assert.ok(isGreeting("hi, how are you?"));
+  assert.ok(isGreeting("hello, how's it going?"));
+  assert.ok(isGreeting("what's up"));
+  assert.ok(isGreeting("howdy"));
+
+  assert.ok(!isGreeting("Explain neural networks"));
+  assert.ok(!isGreeting("What else about neural networks?"));
+  assert.ok(!isGreeting("hi can you write a python script for web scraping"));
+  assert.ok(!isGreeting("hello I want advice on buying a house"));
+  assert.ok(!isGreeting(""));
+  assert.ok(!isGreeting(null));
+  assert.ok(!isGreeting(undefined));
+});
+
+test("retrieval on greeting returns most recent bot entries for grounding life journey / progress", () => {
+  const entries: Entry[] = [
+    {
+      id: "older-note",
+      botId: "nova",
+      chatId: "chat-1",
+      title: "First job interview",
+      content: "Discussed preparing for system design rounds",
+      updatedAt: 1000,
+    },
+    {
+      id: "newer-note",
+      botId: "nova",
+      chatId: "chat-2",
+      title: "Half marathon training",
+      content: "Hit 15km long run milestone this weekend",
+      updatedAt: 5000,
+    },
+    {
+      id: "other-bot-note",
+      botId: "cipher",
+      chatId: "chat-3",
+      title: "Compiler architecture",
+      content: "Wrote AST parser in Rust",
+      updatedAt: 9000,
+    },
+  ];
+
+  const results = retrieve(entries, "hi", "nova");
+  assert.equal(results.length, 2);
+  // Most recent first:
+  assert.equal(results[0].id, "newer-note");
+  assert.equal(results[0].title, "Half marathon training");
+  assert.equal(results[1].id, "older-note");
+  // Bot isolation:
+  assert.ok(results.every((r) => r.botId === "nova"));
+});
+
+test("buildContext instructs bot to ask about user life journey / recent progress based on memory", () => {
+  const chatWithHi: Chat = {
+    ...chat,
+    messages: [{ id: "1", role: "user", content: "hi" }],
+  };
+
+  const entries: Entry[] = [
+    {
+      id: "journey-note",
+      botId: "nova",
+      chatId: "prior-chat",
+      title: "Career transition",
+      content: "Transitioning to senior product engineering role",
+      updatedAt: 2000,
+    },
+  ];
+
+  const { messages, sources } = buildContext(chatWithHi, initialWorkspace.bots[0], entries);
+  const systemPrompt = messages[0].content as string;
+
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].title, "Career transition");
+  assert.ok(systemPrompt.includes("RETRIEVED WIKI NOTES"));
+  assert.ok(systemPrompt.includes("Career transition"));
+  assert.ok(systemPrompt.includes("harsh in truth"));
+  assert.ok(systemPrompt.includes("goals"));
+  assert.ok(systemPrompt.includes("life journey"));
 });

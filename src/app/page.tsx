@@ -176,8 +176,8 @@ const fallbackQuickPrompts = (bot: Bot): QuickPrompt[] => {
     { title: "Build the future", text: "Turn an ambitious idea into action", prompt: "Help me turn an ambitious, high-risk idea into a concrete plan with the fastest useful first experiment." },
   ];
   return [
+    { title: "Morning check-in", text: "Brutal truth on goals & progress", prompt: "Good morning. Give me the unvarnished truth on my goals and progress based on our memory. Don't sugarcoat anything." },
     { title: `Ask ${bot.name}`, text: bot.description, prompt: `Introduce yourself as ${bot.name}, then ask what I would like your help with.` },
-    { title: "Get perspective", text: "See this through a new lens", prompt: `Help me examine a decision using your perspective: ${bot.description}` },
     { title: "Solve a problem", text: "Work through something difficult", prompt: "Help me work through a difficult problem. Start by asking for the essential context." },
     { title: "Make a plan", text: "Turn an idea into next steps", prompt: "Help me turn an idea into a short, concrete plan with a useful first step." },
   ];
