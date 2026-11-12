@@ -1818,26 +1818,15 @@ export default function Home() {
       <main className="main">
         {view !== "chat" && (
           <header className="topbar">
-            <div className="topbar-left">
-              <button
-                type="button"
-                className="sidebar-toggle-btn-header"
-                onClick={toggleSidebar}
-                aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                title={sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
-              >
-                <PanelLeftOpen size={18} />
-              </button>
-              <div className="breadcrumb">
-                Workspace <ChevronRight size={13} />
-                <span>
-                  {view === "history"
-                    ? "Chat history"
-                    : view === "bots"
-                      ? "My bots"
-                      : "Knowledge wiki"}
-                </span>
-              </div>
+            <div className="breadcrumb">
+              Workspace <ChevronRight size={13} />
+              <span>
+                {view === "history"
+                  ? "Chat history"
+                  : view === "bots"
+                    ? "My bots"
+                    : "Knowledge wiki"}
+              </span>
             </div>
             <div className="topbar-right">
               <span className="private-label">
@@ -1857,55 +1846,6 @@ export default function Home() {
         )}
         {view === "chat" && bot ? (
           <div className="chat-layout">
-            <header className="chat-topbar">
-              <div className="chat-topbar-left">
-                <button
-                  type="button"
-                  className="sidebar-toggle-btn-header"
-                  onClick={toggleSidebar}
-                  aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  title={sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
-                >
-                  <PanelLeftOpen size={18} />
-                </button>
-                <div
-                  className="chat-header-bot-pill"
-                  onClick={toggleBotPicker}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Current bot: ${bot.name}. Click to switch bot.`}
-                  title="Switch bot"
-                >
-                  <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
-                  <div className="chat-header-bot-info">
-                    <span className="chat-header-bot-name">{bot.name}</span>
-                    <span className="chat-header-bot-model">{modelShortName}</span>
-                  </div>
-                  <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
-                </div>
-              </div>
-              <div className="chat-topbar-right">
-                <button
-                  type="button"
-                  className="topbar-new-chat-btn"
-                  onClick={() => newChat()}
-                  disabled={busy || !bot}
-                  aria-label="Start new chat"
-                  title="Start new chat (⌘K)"
-                >
-                  <Plus size={16} />
-                  <span className="topbar-new-chat-label">New chat</span>
-                </button>
-                <button
-                  className={`key-status ${connected ? "connected" : ""}`}
-                  onClick={() => setSettings(true)}
-                >
-                  <span className={connected ? "online-dot" : "offline-dot"} />
-                  <span className="key-status-text">{connected ? "API key secured" : connection.status === "checking" ? "Checking…" : "Connect API key"}</span>
-                  <ArrowUpRight size={13} />
-                </button>
-              </div>
-            </header>
             <section className="conversation">
               {chat?.messages.length ? (
                 <>
@@ -2067,7 +2007,6 @@ export default function Home() {
                 </>
               ) : (
                 <div className="chat-center-stage welcome">
-                  <h1 className="hero-greeting">Whats on your mind?</h1>
                   <div className="hero-composer-box">
                     {error && !settings && (
                       <div role="alert" className="error-banner" style={{ width: "100%", marginBottom: 16 }}>

@@ -640,12 +640,17 @@ button:hover:not(:disabled) {
   border-color: #404854;
 }
 .sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
-  z-index: 490;
-  animation: fadeIn 0.2s ease-out;
+  display: none;
+}
+@media (max-width: 1023px) {
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 490;
+    animation: fadeIn 0.2s ease-out;
+  }
 }
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -2711,9 +2716,6 @@ button:hover:not(:disabled) {
 }
 @media (max-width: 1024px) {
   .knowledge-panel {
-    display: none !important;
-  }
-  .sidebar-expand-btn {
     display: none !important;
   }
   .sidebar {
