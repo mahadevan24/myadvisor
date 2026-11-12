@@ -328,12 +328,12 @@ export default function Home() {
       const rect = botPickerRef.current.getBoundingClientRect();
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceAbove < 350 && spaceBelow > spaceAbove) {
+      if (spaceBelow >= 350 || spaceBelow > spaceAbove) {
         setDropDirection("down");
-        setMaxDropHeight(Math.max(160, Math.min(360, spaceBelow - 24)));
+        setMaxDropHeight(Math.max(140, Math.min(360, spaceBelow - 20)));
       } else {
         setDropDirection("up");
-        setMaxDropHeight(Math.max(160, Math.min(360, spaceAbove - 24)));
+        setMaxDropHeight(Math.max(140, Math.min(360, spaceAbove - 20)));
       }
     }
     setBotPickerOpen((v) => !v);
@@ -346,12 +346,12 @@ export default function Home() {
         const rect = botPickerRef.current.getBoundingClientRect();
         const spaceAbove = rect.top;
         const spaceBelow = window.innerHeight - rect.bottom;
-        if (spaceAbove < 350 && spaceBelow > spaceAbove) {
+        if (spaceBelow >= 350 || spaceBelow > spaceAbove) {
           setDropDirection("down");
-          setMaxDropHeight(Math.max(160, Math.min(360, spaceBelow - 24)));
+          setMaxDropHeight(Math.max(140, Math.min(360, spaceBelow - 20)));
         } else {
           setDropDirection("up");
-          setMaxDropHeight(Math.max(160, Math.min(360, spaceAbove - 24)));
+          setMaxDropHeight(Math.max(140, Math.min(360, spaceAbove - 20)));
         }
       }
     }
@@ -367,14 +367,18 @@ export default function Home() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
       if (botPickerRef.current && !botPickerRef.current.contains(e.target as Node)) {
         setBotPickerOpen(false);
       }
     }
     if (botPickerOpen) {
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside, { passive: true });
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("touchstart", handleClickOutside);
+      };
     }
   }, [botPickerOpen]);
 
