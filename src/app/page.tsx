@@ -1643,7 +1643,7 @@ export default function Home() {
                           {phase}…
                         </div>
                       )}
-                      {sources.length > 0 && (
+                      {!busy && sources.length > 0 && (
                         <div className="source-chips">
                           Wiki context:{" "}
                           {sources.map((s, i) => (
