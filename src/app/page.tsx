@@ -914,47 +914,49 @@ export default function Home() {
                     onTouchStart={handleTouchStart}
                     onTouchMove={handleTouchMove}
                   >
-                    {chat.messages.map((m) => (
-                      <article className={`message ${m.role}`} key={m.id}>
-                        <div
-                          className={`message-avatar ${m.role === "assistant" ? bot.color : ""}`}
-                        >
-                          {m.role === "user" ? "Y" : bot.symbol}
-                        </div>
-                        <div className="message-body">
-                          <div className="message-author">
-                            {m.role === "user" ? "You" : bot.name}
-                            <span>
-                              {m.role === "assistant"
-                                ? "YOUR THINKING PARTNER"
-                                : ""}
-                            </span>
+                    <div className="messages-inner">
+                      {chat.messages.map((m) => (
+                        <article className={`message ${m.role}`} key={m.id}>
+                          <div
+                            className={`message-avatar ${m.role === "assistant" ? bot.color : ""}`}
+                          >
+                            {m.role === "user" ? "Y" : bot.symbol}
                           </div>
-                          <div className="markdown">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {m.content || "Thinking…"}
-                            </ReactMarkdown>
+                          <div className="message-body">
+                            <div className="message-author">
+                              {m.role === "user" ? "You" : bot.name}
+                              <span>
+                                {m.role === "assistant"
+                                  ? "YOUR THINKING PARTNER"
+                                  : ""}
+                              </span>
+                            </div>
+                            <div className="markdown">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {m.content || "Thinking…"}
+                              </ReactMarkdown>
+                            </div>
                           </div>
+                        </article>
+                      ))}
+                      {busy && (
+                        <div className="stream-status">
+                          <span className="online-dot pulse" />
+                          {phase}…
                         </div>
-                      </article>
-                    ))}
-                    {busy && (
-                      <div className="stream-status">
-                        <span className="online-dot pulse" />
-                        {phase}…
-                      </div>
-                    )}
-                    {sources.length > 0 && (
-                      <div className="source-chips">
-                        Wiki context:{" "}
-                        {sources.map((s, i) => (
-                          <button key={s.id} onClick={() => setEntry(s)}>
-                            [{i + 1}] {s.title.slice(0, 30)}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div ref={bottom} />
+                      )}
+                      {sources.length > 0 && (
+                        <div className="source-chips">
+                          Wiki context:{" "}
+                          {sources.map((s, i) => (
+                            <button key={s.id} onClick={() => setEntry(s)}>
+                              [{i + 1}] {s.title.slice(0, 30)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div ref={bottom} />
+                    </div>
                   </div>
                   <div className="composer-area bottom-center">
                     {commandResult?.type === "status" && (
