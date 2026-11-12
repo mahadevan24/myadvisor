@@ -320,6 +320,46 @@ export default function Home() {
   const [entry, setEntry] = useState<Entry | null>(null);
   const [botPickerOpen, setBotPickerOpen] = useState(false);
   const botPickerRef = useRef<HTMLDivElement>(null);
+  const [dropDirection, setDropDirection] = useState<"up" | "down">("up");
+  const [maxDropHeight, setMaxDropHeight] = useState<number>(320);
+
+  function toggleBotPicker() {
+    if (!botPickerOpen && botPickerRef.current) {
+      const rect = botPickerRef.current.getBoundingClientRect();
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceAbove < 350 && spaceBelow > spaceAbove) {
+        setDropDirection("down");
+        setMaxDropHeight(Math.max(160, Math.min(360, spaceBelow - 24)));
+      } else {
+        setDropDirection("up");
+        setMaxDropHeight(Math.max(160, Math.min(360, spaceAbove - 24)));
+      }
+    }
+    setBotPickerOpen((v) => !v);
+  }
+
+  useEffect(() => {
+    if (!botPickerOpen) return;
+    function updateDropdownPosition() {
+      if (botPickerRef.current) {
+        const rect = botPickerRef.current.getBoundingClientRect();
+        const spaceAbove = rect.top;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceAbove < 350 && spaceBelow > spaceAbove) {
+          setDropDirection("down");
+          setMaxDropHeight(Math.max(160, Math.min(360, spaceBelow - 24)));
+        } else {
+          setDropDirection("up");
+          setMaxDropHeight(Math.max(160, Math.min(360, spaceAbove - 24)));
+        }
+      }
+    }
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    return () => window.removeEventListener("resize", updateDropdownPosition);
+  }, [botPickerOpen]);
+
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importJsonText, setImportJsonText] = useState("");
   const [importError, setImportError] = useState("");
@@ -1489,7 +1529,7 @@ export default function Home() {
               type="button"
               className="composer-bot-pill"
               disabled={busy}
-              onClick={() => setBotPickerOpen((v) => !v)}
+              onClick={toggleBotPicker}
               aria-label={`Choose bot: ${bot.name}`}
               aria-expanded={botPickerOpen}
             >
@@ -1498,7 +1538,11 @@ export default function Home() {
               <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
             </button>
             {botPickerOpen && (
-              <div className="composer-bot-dropdown" role="menu">
+              <div
+                className={`composer-bot-dropdown ${dropDirection === "down" ? "open-down" : "open-up"}`}
+                style={{ maxHeight: `${maxDropHeight}px` }}
+                role="menu"
+              >
                 <div className="dropdown-section-label">CHOOSE BOT BY CATEGORY</div>
                 {Object.entries(groupedBots).map(([cat, botsInCat]) => (
                   <div key={cat} className="dropdown-category-group">

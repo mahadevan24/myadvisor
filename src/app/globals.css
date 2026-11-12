@@ -1107,11 +1107,10 @@ button:hover:not(:disabled) {
 }
 .composer-bot-dropdown {
   position: absolute;
-  bottom: calc(100% + 10px);
   right: 0;
   min-width: 290px;
   max-width: 380px;
-  max-height: 380px;
+  max-height: 340px;
   overflow-y: auto;
   background: #1e1f20;
   border: 1px solid #3c4046;
@@ -1122,6 +1121,22 @@ button:hover:not(:disabled) {
   flex-direction: column;
   gap: 2px;
   z-index: 1000;
+}
+.composer-bot-dropdown.open-up {
+  bottom: calc(100% + 10px);
+  top: auto;
+}
+.composer-bot-dropdown.open-down {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+.hero-composer-box .composer-bot-dropdown {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+.hero-composer-box .composer-bot-dropdown.open-up {
+  bottom: calc(100% + 10px);
+  top: auto;
 }
 .dropdown-category-group {
   margin-bottom: 6px;
