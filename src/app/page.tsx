@@ -1948,13 +1948,6 @@ export default function Home() {
                 <div className="library-header-actions">
                   <button
                     className="secondary-button"
-                    onClick={() => importBotsList(CURATED_BOTS)}
-                    title="Load all 27 business, productivity, mindset, leadership, science, health, and spiritual mentors"
-                  >
-                    <Sparkles size={16} /> Add 27 Curated Mentors
-                  </button>
-                  <button
-                    className="secondary-button"
                     onClick={() => setImportModalOpen(true)}
                   >
                     <Upload size={16} /> Import bots
@@ -2514,7 +2507,7 @@ export default function Home() {
             </div>
             <h2 id="import-title">Import Thinking Partners</h2>
             <p>
-              Paste a JSON array of bots, upload a <code>.json</code> file, or load the curated mentor suite.
+              Paste a JSON array of bots, or upload a <code>.json</code> file.
             </p>
 
             {importError && (
@@ -2529,16 +2522,6 @@ export default function Home() {
             )}
 
             <div className="import-quick-row">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  setImportJsonText(JSON.stringify(CURATED_BOTS, null, 2));
-                  setImportError("");
-                }}
-              >
-                <Sparkles size={15} /> Paste 27 Curated Mentors JSON
-              </button>
               <label className="secondary-button file-upload-btn">
                 <Upload size={15} /> Choose .JSON File
                 <input
