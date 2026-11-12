@@ -315,6 +315,7 @@ export default function Home() {
   const [editor, setEditor] = useState<Bot | null>(null);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [entry, setEntry] = useState<Entry | null>(null);
@@ -1219,7 +1220,6 @@ export default function Home() {
       const context = buildContext(current, bot, workspace.entries);
       setSources(context.sources);
       setPhase("Thinking");
-      const response = await request(context.messages, true, controller.signal);
       const assistantId = uid();
       current = {
         ...current,
@@ -1228,16 +1228,85 @@ export default function Home() {
           { id: assistantId, role: "assistant", content: "" },
         ],
       };
-      await readStream(response, (content) => {
-        setPhase("Streaming");
-        current = {
-          ...current,
-          messages: current.messages.map((m) =>
-            m.id === assistantId ? { ...m, content } : m,
-          ),
+      setStreamingMessageId(assistantId);
+      updateChat(current);
+
+      const response = await request(context.messages, true, controller.signal);
+
+      let targetContent = "";
+      let displayedContent = "";
+      let streamFinished = false;
+      let streamError: Error | null = null;
+
+      await new Promise<void>((resolve, reject) => {
+        let rafId: number;
+
+        const updateDisplay = () => {
+          if (controller.signal.aborted) {
+            cancelAnimationFrame(rafId);
+            reject(
+              new Error("Generation stopped. You can continue the conversation."),
+            );
+            return;
+          }
+
+          if (displayedContent.length < targetContent.length) {
+            const backlog = targetContent.length - displayedContent.length;
+            let step = 1;
+            if (typeof document !== "undefined" && document.hidden) {
+              step = backlog;
+            } else if (backlog > 80) {
+              step = Math.ceil(backlog / 4);
+            } else if (backlog > 30) {
+              step = Math.ceil(backlog / 6);
+            } else if (backlog > 8) {
+              step = 2;
+            } else {
+              step = 1;
+            }
+
+            displayedContent = targetContent.slice(
+              0,
+              displayedContent.length + step,
+            );
+            current = {
+              ...current,
+              messages: current.messages.map((m) =>
+                m.id === assistantId ? { ...m, content: displayedContent } : m,
+              ),
+            };
+            updateChat(current);
+          }
+
+          if (streamFinished && displayedContent.length >= targetContent.length) {
+            cancelAnimationFrame(rafId);
+            if (streamError) {
+              reject(streamError);
+            } else {
+              resolve();
+            }
+            return;
+          }
+
+          rafId = requestAnimationFrame(updateDisplay);
         };
-        updateChat(current);
+
+        rafId = requestAnimationFrame(updateDisplay);
+
+        readStream(response, (content) => {
+          setPhase("Streaming");
+          targetContent = content;
+        })
+          .then(() => {
+            streamFinished = true;
+          })
+          .catch((err) => {
+            streamError = err instanceof Error ? err : new Error(String(err));
+            streamFinished = true;
+          });
       });
+
+      setStreamingMessageId(null);
       updateChat(current, true);
 
       const shouldTitle =
@@ -1281,6 +1350,7 @@ export default function Home() {
       };
       updateChat(current);
     } finally {
+      setStreamingMessageId(null);
       setBusy(false);
       setPhase("");
       abort.current = null;
@@ -1862,89 +1932,122 @@ export default function Home() {
                     onTouchMove={handleTouchMove}
                   >
                     <div className="messages-inner">
-                      {chat.messages.map((m) => (
-                        <article className={`message ${m.role}`} key={m.id}>
-                          <div
-                            className={`message-avatar ${m.role === "assistant" ? bot.color : ""}`}
+                      {chat.messages.map((m) => {
+                        const isStreaming = streamingMessageId === m.id;
+                        return (
+                          <article
+                            className={`message ${m.role}${isStreaming ? " streaming-active" : ""}`}
+                            key={m.id}
                           >
-                            {m.role === "user" ? "Y" : bot.symbol}
-                          </div>
-                          <div className="message-body">
-                            <div className="message-author">
-                              {m.role === "user" ? "You" : bot.name}
-                              <span>
-                                {m.role === "assistant"
-                                  ? "YOUR THINKING PARTNER"
-                                  : ""}
-                              </span>
+                            <div
+                              className={`message-avatar ${m.role === "assistant" ? bot.color : ""}`}
+                            >
+                              {m.role === "user" ? "Y" : bot.symbol}
                             </div>
-                            {m.attachments && m.attachments.length > 0 && (
-                              <div className="message-attachments">
-                                {m.attachments.map((att) =>
-                                  att.type.startsWith("image/") ? (
-                                    <div
-                                      className="message-attachment-image-wrap"
-                                      key={att.id}
-                                    >
-                                      <img
-                                        src={att.url}
-                                        alt={att.name}
-                                        className="message-attachment-image"
-                                        onClick={() => {
-                                          const w = window.open("");
-                                          w?.document.write(
-                                            `<title>${att.name}</title><body style="margin:0;background:#0e1013;display:grid;place-items:center;min-height:100vh;"><img src="${att.url}" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;" /></body>`,
-                                          );
-                                        }}
-                                        title="Click to view full image"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <a
-                                      key={att.id}
-                                      href={att.url}
-                                      download={att.name}
-                                      className="message-attachment-doc"
-                                      title={`Download ${att.name}`}
-                                    >
-                                      <div className="doc-icon">
-                                        <FileText size={18} />
+                            <div className="message-body">
+                              <div className="message-author">
+                                {m.role === "user" ? "You" : bot.name}
+                                <span>
+                                  {m.role === "assistant"
+                                    ? "YOUR THINKING PARTNER"
+                                    : ""}
+                                </span>
+                              </div>
+                              {m.attachments && m.attachments.length > 0 && (
+                                <div className="message-attachments">
+                                  {m.attachments.map((att) =>
+                                    att.type.startsWith("image/") ? (
+                                      <div
+                                        className="message-attachment-image-wrap"
+                                        key={att.id}
+                                      >
+                                        <img
+                                          src={att.url}
+                                          alt={att.name}
+                                          className="message-attachment-image"
+                                          onClick={() => {
+                                            const w = window.open("");
+                                            w?.document.write(
+                                              `<title>${att.name}</title><body style="margin:0;background:#0e1013;display:grid;place-items:center;min-height:100vh;"><img src="${att.url}" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;" /></body>`,
+                                            );
+                                          }}
+                                          title="Click to view full image"
+                                        />
                                       </div>
-                                      <div className="doc-meta">
-                                        <span className="doc-name">{att.name}</span>
-                                        <span className="doc-size">
-                                          {formatFileSize(att.size)}
-                                        </span>
-                                      </div>
-                                      <Download size={14} className="doc-dl" />
-                                    </a>
-                                  ),
-                                )}
-                              </div>
-                            )}
-                            {m.content && (
-                              <div className="markdown">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {m.content}
-                                </ReactMarkdown>
-                              </div>
-                            )}
-                            {!m.content && m.role === "assistant" && (
-                              <div className="markdown">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {"Thinking…"}
-                                </ReactMarkdown>
-                              </div>
-                            )}
-                          </div>
-                        </article>
-                      ))}
-                      {busy && (
-                        <div className="stream-status">
-                          <span className="online-dot pulse" />
-                          {phase}…
-                        </div>
-                      )}
+                                    ) : (
+                                      <a
+                                        key={att.id}
+                                        href={att.url}
+                                        download={att.name}
+                                        className="message-attachment-doc"
+                                        title={`Download ${att.name}`}
+                                      >
+                                        <div className="doc-icon">
+                                          <FileText size={18} />
+                                        </div>
+                                        <div className="doc-meta">
+                                          <span className="doc-name">{att.name}</span>
+                                          <span className="doc-size">
+                                            {formatFileSize(att.size)}
+                                          </span>
+                                        </div>
+                                        <Download size={14} className="doc-dl" />
+                                      </a>
+                                    ),
+                                  )}
+                                </div>
+                              )}
+                              {m.role === "assistant" && !m.content && (
+                                <div
+                                  className="claude-thinking-container"
+                                  role="status"
+                                  aria-label="Thinking"
+                                >
+                                  <div className="claude-thinking-capsule">
+                                    <span
+                                      className="claude-sparkle"
+                                      aria-hidden="true"
+                                    >
+                                      ✦
+                                    </span>
+                                    <span className="claude-thinking-text">
+                                      {phase ? `${phase}…` : "Thinking…"}
+                                    </span>
+                                    <span
+                                      className="claude-thinking-dots"
+                                      aria-hidden="true"
+                                    >
+                                      <span />
+                                      <span />
+                                      <span />
+                                    </span>
+                                    <span
+                                      className="claude-thinking-chevron"
+                                      aria-hidden="true"
+                                    >
+                                      ›
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              {m.role === "assistant" && m.content && (
+                                <div className="claude-thought-header">
+                                  <span className="claude-thought-spark">✦</span>
+                                  <span>Thought for a few seconds</span>
+                                  <span className="claude-thinking-chevron">›</span>
+                                </div>
+                              )}
+                              {m.content && (
+                                <div className="markdown">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {m.content}
+                                  </ReactMarkdown>
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
                       {!busy && sources.length > 0 && (
                         <div className="source-chips">
                           Wiki context:{" "}
