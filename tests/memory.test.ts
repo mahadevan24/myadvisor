@@ -353,6 +353,16 @@ test("buildContext instructs bot to ask about user life journey / recent progres
   assert.ok(systemPrompt.includes("life journey"));
 });
 
+test("buildContext includes current date, time, and year in temporal context", () => {
+  const fixedDate = new Date("2026-11-12T16:00:00Z");
+  const { messages } = buildContext(chat, initialWorkspace.bots[0], [], fixedDate);
+  const systemPrompt = messages[0].content as string;
+
+  assert.ok(systemPrompt.includes("CURRENT DATE & TIME"));
+  assert.ok(systemPrompt.includes("2026"));
+  assert.ok(systemPrompt.includes("November"));
+});
+
 test("curated bot collection includes all requested mentor categories and valid attributes", () => {
   const { BOT_CATEGORIES, CURATED_BOTS } = require("../src/lib/curated-bots");
 
