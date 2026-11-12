@@ -279,6 +279,41 @@ button:hover:not(:disabled) {
   padding: 0;
   display: flex;
 }
+.bot-nav-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+}
+.bot-nav-row:hover .bot-default-star {
+  opacity: 1;
+}
+.bot-nav-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bot-default-star {
+  background: transparent;
+  border: none;
+  color: #555a64;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-right: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.bot-default-star.active {
+  opacity: 1;
+  color: #c1f99a;
+}
+.bot-default-star:hover {
+  color: #c1f99a;
+}
 .bot-nav {
   display: flex;
   width: 100%;
@@ -1455,6 +1490,34 @@ button:hover:not(:disabled) {
   background: #1c221a;
   color: #c0d0b1;
 }
+.editor-default-row {
+  margin: 16px 0 8px;
+}
+.default-bot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #191c20;
+  border: 1px solid #2d3238;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #929ba2;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+.default-bot-toggle:hover {
+  background: #22262c;
+  color: #e2e8f0;
+  border-color: #3e4650;
+}
+.default-bot-toggle.active {
+  background: #1c281e;
+  border-color: #3f5d37;
+  color: #c1f99a;
+  font-weight: 500;
+}
 .bot-editor-actions {
   display: flex;
   justify-content: flex-end;
@@ -1501,10 +1564,43 @@ button:hover:not(:disabled) {
   font-size: 39px;
   border-radius: 14px;
 }
+.card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+}
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-default-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #1c2124;
+  border: 1px solid #2f3638;
+  border-radius: 9999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  color: #8c9598;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.card-default-pill:hover {
+  background: #252c30;
+  color: #d8deda;
+  border-color: #444e50;
+}
+.card-default-pill.active {
+  background: #202e21;
+  border-color: #3f5d37;
+  color: #c1f99a;
+  font-weight: 500;
+}
 .card-settings {
-  position: absolute;
-  right: 17px;
-  top: 19px;
+  position: static;
 }
 .bot-card h2 {
   font-size: 20px;

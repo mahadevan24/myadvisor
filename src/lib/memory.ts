@@ -35,8 +35,14 @@ export type Entry = {
   content: string;
   updatedAt: number;
 };
-export type Workspace = { bots: Bot[]; chats: Chat[]; entries: Entry[] };
+export type Workspace = {
+  bots: Bot[];
+  chats: Chat[];
+  entries: Entry[];
+  defaultBotId?: string;
+};
 export const initialWorkspace: Workspace = {
+  defaultBotId: "nova",
   bots: [
     {
       id: "nova",

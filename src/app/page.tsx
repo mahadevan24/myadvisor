@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -65,7 +66,29 @@ export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("chat");
-  const [botId, setBotId] = useState("nova");
+  const [defaultBotId, setDefaultBotId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("myadvisor.defaultBotId") || "nova";
+      } catch {}
+    }
+    return "nova";
+  });
+  const [botId, setBotId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("myadvisor.defaultBotId") || "nova";
+      } catch {}
+    }
+    return "nova";
+  });
+  function setDefaultBot(id: string) {
+    setDefaultBotId(id);
+    try {
+      localStorage.setItem("myadvisor.defaultBotId", id);
+    } catch {}
+    setWorkspace((current) => ({ ...current, defaultBotId: id }));
+  }
   const [chatId, setChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [key, setKey] = useState("");
@@ -88,22 +111,9 @@ export default function Home() {
   const [sync, setSync] = useState("Local workspace");
   const [cloudBusy, setCloudBusy] = useState(false);
   const [account, setAccount] = useState<{ label: string; anonymous: boolean } | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  useEffect(() => {
-    try {
-      if (localStorage.getItem("myadvisor.sidebar.collapsed") === "true") {
-        setSidebarCollapsed(true);
-      }
-    } catch {}
-  }, []);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   function toggleSidebar() {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("myadvisor.sidebar.collapsed", String(next));
-      } catch {}
-      return next;
-    });
+    setSidebarCollapsed((prev) => !prev);
   }
   const [sources, setSources] = useState<Entry[]>([]);
   const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
@@ -168,9 +178,15 @@ export default function Home() {
       return;
     }
     void connectCloud(false).then(({ uid, workspace: saved }) => {
-      setWorkspace(saved || initialWorkspace);
+      const ws = saved || initialWorkspace;
+      setWorkspace(ws);
       setCloudUid(uid);
       setSync("Cloud connected");
+      const targetDefault = ws.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+      if (targetDefault && ws.bots.some((b: Bot) => b.id === targetDefault)) {
+        setDefaultBotId(targetDefault);
+        setBotId(targetDefault);
+      }
     }).catch(() => setSync("Cloud connection failed"));
   }), []);
   function openModels(target: "chat" | "editor") {
@@ -214,8 +230,14 @@ export default function Home() {
           Array.isArray(data.bots) &&
           Array.isArray(data.chats) &&
           Array.isArray(data.entries)
-        )
+        ) {
           setWorkspace(data);
+          const targetDefault = data.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+          if (targetDefault && data.bots.some((b: Bot) => b.id === targetDefault)) {
+            setDefaultBotId(targetDefault);
+            setBotId(targetDefault);
+          }
+        }
       }
     } catch {
       setError("Could not restore the local workspace.");
@@ -614,6 +636,10 @@ export default function Home() {
       setChatId(null);
       setSources([]);
     }
+    if (defaultBotId === target.id) {
+      const nextDefault = remainingBots[0]?.id || "nova";
+      setDefaultBot(nextDefault);
+    }
     setEditor(null);
     if (!remainingBots.length) setView("bots");
   }
@@ -793,16 +819,29 @@ export default function Home() {
           </button>
         </div>
         {workspace.bots.map((b) => (
-          <button
-            disabled={busy}
-            key={b.id}
-            onClick={() => newChat(b.id)}
-            className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
-          >
-            <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-            {b.name}
-            <span className="online-dot" />
-          </button>
+          <div key={b.id} className="bot-nav-row">
+            <button
+              disabled={busy}
+              onClick={() => newChat(b.id)}
+              className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
+            >
+              <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+              <span className="bot-nav-text">{b.name}</span>
+              <span className="online-dot" />
+            </button>
+            <button
+              type="button"
+              className={`bot-default-star ${b.id === defaultBotId ? "active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDefaultBot(b.id);
+              }}
+              title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
+              aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+            >
+              <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+            </button>
+          </div>
         ))}
         <div className="nav-label recent-label">RECENT CONVERSATIONS</div>
         <div className="recent-list">
@@ -1057,14 +1096,28 @@ export default function Home() {
               {view === "bots"
                 ? workspace.bots.map((b) => (
                     <article className="bot-card" key={b.id}>
-                      <span className={`large-bot ${b.color}`}>{b.symbol}</span>
-                      <button
-                        className="card-settings icon-button"
-                        aria-label={`Edit ${b.name}`}
-                        onClick={() => setEditor({ ...b })}
-                      >
-                        <Settings2 size={17} />
-                      </button>
+                      <div className="card-top-row">
+                        <span className={`large-bot ${b.color}`}>{b.symbol}</span>
+                        <div className="card-actions">
+                          <button
+                            type="button"
+                            className={`card-default-pill ${b.id === defaultBotId ? "active" : ""}`}
+                            onClick={() => setDefaultBot(b.id)}
+                            title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
+                            aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+                          >
+                            <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+                            <span>{b.id === defaultBotId ? "Default" : "Set default"}</span>
+                          </button>
+                          <button
+                            className="card-settings icon-button"
+                            aria-label={`Edit ${b.name}`}
+                            onClick={() => setEditor({ ...b })}
+                          >
+                            <Settings2 size={17} />
+                          </button>
+                        </div>
+                      </div>
                       <h2>{b.name}</h2>
                       <p>{b.description}</p>
                       <span className="model-pill">{b.model}</span>
@@ -1364,6 +1417,16 @@ export default function Home() {
                   {editor.color === c ? <Check size={16} /> : "✧"}
                 </button>
               ))}
+            </div>
+            <div className="editor-default-row">
+              <button
+                type="button"
+                className={`default-bot-toggle ${editor.id === defaultBotId ? "active" : ""}`}
+                onClick={() => setDefaultBot(editor.id)}
+              >
+                <Star size={14} fill={editor.id === defaultBotId ? "currentColor" : "none"} />
+                <span>{editor.id === defaultBotId ? "Default bot on launch" : "Set as default bot on launch"}</span>
+              </button>
             </div>
             <div className="bot-editor-actions">
               {workspace.bots.some((candidate) => candidate.id === editor.id) && (
