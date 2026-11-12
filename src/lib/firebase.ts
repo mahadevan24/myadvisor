@@ -66,8 +66,9 @@ export async function saveCloud(uid: string, workspace: Workspace) {
     throw new Error(
       "Cloud workspace is near its size limit. Export a backup; local changes are still saved.",
     );
+  const sanitized = JSON.parse(data);
   await setDoc(doc(db, "users", uid, "workspace", "main"), {
-    data: workspace,
+    data: sanitized,
     updatedAt: Date.now(),
   });
 }

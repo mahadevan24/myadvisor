@@ -363,7 +363,21 @@ export default function Home() {
           merged.push(b);
         }
       }
-      const updated = { ...current, bots: merged };
+      const cleanBots = merged.map((b) => {
+        const clean: Bot = {
+          id: b.id,
+          name: b.name,
+          description: b.description,
+          instructions: b.instructions,
+          model: b.model,
+          color: b.color,
+          symbol: b.symbol,
+        };
+        if (b.category) clean.category = b.category;
+        if (Array.isArray(b.quickPrompts)) clean.quickPrompts = b.quickPrompts;
+        return clean;
+      });
+      const updated = { ...current, bots: cleanBots };
       try {
         const currentUid = localStorage.getItem("myadvisor.lastUid") || "guest";
         localStorage.setItem(
@@ -401,7 +415,7 @@ export default function Home() {
         if (!item.name || typeof item.name !== "string") {
           throw new Error(`Bot at index ${idx} is missing a valid 'name'.`);
         }
-        return {
+        const botObj: Bot = {
           id: item.id || `bot-${uid()}`,
           name: item.name.trim(),
           category: item.category?.trim() || "General",
@@ -410,8 +424,11 @@ export default function Home() {
           model: item.model || "openai/gpt-4o-mini",
           color: item.color || "mint",
           symbol: item.symbol || "✳",
-          quickPrompts: Array.isArray(item.quickPrompts) ? item.quickPrompts : undefined,
         };
+        if (Array.isArray(item.quickPrompts)) {
+          botObj.quickPrompts = item.quickPrompts;
+        }
+        return botObj;
       });
 
       importBotsList(validBots);
@@ -877,7 +894,10 @@ export default function Home() {
       ? setTimeout(() => {
           setSync("Syncing…");
           saveCloud(cloudUid, workspace)
-            .then(() => setSync("Cloud synced"))
+            .then(() => {
+              setSync("Cloud synced");
+              setError("");
+            })
             .catch((e) => {
               setSync("Sync failed");
               setError(e.message);
