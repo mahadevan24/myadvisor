@@ -515,6 +515,11 @@ export default function Home() {
   function toggleSidebar() {
     setSidebarCollapsed((prev) => !prev);
   }
+  function closeSidebarOnMobile() {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setSidebarCollapsed(true);
+    }
+  }
   const [sources, setSources] = useState<Entry[]>([]);
   const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -1035,6 +1040,7 @@ export default function Home() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
   function newChat(id = botId) {
+    closeSidebarOnMobile();
     if (busy) return;
     const selectedBot = workspace.bots.find((candidate) => candidate.id === id);
     if (!selectedBot) {
@@ -1051,6 +1057,7 @@ export default function Home() {
     setError("");
   }
   function openChat(id: string) {
+    closeSidebarOnMobile();
     if (busy) return;
     const selected = workspace.chats.find((c) => c.id === id);
     if (!selected) return;
@@ -1472,29 +1479,6 @@ export default function Home() {
         </div>
       )}
       <div className="composer-row">
-        <button
-          type="button"
-          className="composer-icon-btn attach-btn"
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Attach documents or images"
-          title="Attach documents or images"
-          disabled={busy}
-        >
-          <Plus size={18} />
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={(e) => {
-            if (e.target.files?.length) {
-              void handleFiles(Array.from(e.target.files));
-              e.target.value = "";
-            }
-          }}
-          style={{ display: "none" }}
-          multiple
-          accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.md,text/*"
-        />
         <textarea
           ref={inputRef}
           aria-label="Message"
@@ -1524,121 +1508,148 @@ export default function Home() {
           }}
         />
         <div className="composer-pill-actions">
-          <div className="composer-dropdown-wrap" ref={botPickerRef}>
+          <div className="composer-actions-left">
             <button
               type="button"
-              className="composer-bot-pill"
+              className="composer-icon-btn attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach documents or images"
+              title="Attach documents or images"
               disabled={busy}
-              onClick={toggleBotPicker}
-              aria-label={`Choose bot: ${bot.name}`}
-              aria-expanded={botPickerOpen}
             >
-              <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
-              <span className="composer-bot-name">{bot.name}</span>
-              <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
+              <Plus size={18} />
             </button>
-            {botPickerOpen && (
-              <div
-                className={`composer-bot-dropdown ${dropDirection === "down" ? "open-down" : "open-up"}`}
-                style={{ maxHeight: `${maxDropHeight}px` }}
-                role="menu"
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                if (e.target.files?.length) {
+                  void handleFiles(Array.from(e.target.files));
+                  e.target.value = "";
+                }
+              }}
+              style={{ display: "none" }}
+              multiple
+              accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.md,text/*"
+            />
+            <div className="composer-dropdown-wrap" ref={botPickerRef}>
+              <button
+                type="button"
+                className="composer-bot-pill"
+                disabled={busy}
+                onClick={toggleBotPicker}
+                aria-label={`Choose bot: ${bot.name}`}
+                aria-expanded={botPickerOpen}
               >
-                <div className="dropdown-section-label">CHOOSE BOT BY CATEGORY</div>
-                {Object.entries(groupedBots).map(([cat, botsInCat]) => (
-                  <div key={cat} className="dropdown-category-group">
-                    <div className="dropdown-category-header">
-                      <span>{cat}</span>
-                      <span className="dropdown-category-count">{botsInCat.length}</span>
+                <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
+                <span className="composer-bot-name">{bot.name}</span>
+                <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
+              </button>
+              {botPickerOpen && (
+                <div
+                  className={`composer-bot-dropdown ${dropDirection === "down" ? "open-down" : "open-up"}`}
+                  style={{ maxHeight: `${maxDropHeight}px` }}
+                  role="menu"
+                >
+                  <div className="dropdown-section-label">CHOOSE BOT BY CATEGORY</div>
+                  {Object.entries(groupedBots).map(([cat, botsInCat]) => (
+                    <div key={cat} className="dropdown-category-group">
+                      <div className="dropdown-category-header">
+                        <span>{cat}</span>
+                        <span className="dropdown-category-count">{botsInCat.length}</span>
+                      </div>
+                      {botsInCat.map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          role="menuitem"
+                          className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
+                          onClick={() => {
+                            setBotId(b.id);
+                            setBotPickerOpen(false);
+                          }}
+                        >
+                          <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                          <div className="bot-option-info">
+                            <span className="bot-option-name">{b.name}</span>
+                            <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
+                          </div>
+                          {b.id === defaultBotId && (
+                            <span className="bot-option-default" title="Default bot">
+                              <Star size={11} fill="currentColor" />
+                            </span>
+                          )}
+                          {b.id === bot.id && <Check size={14} className="bot-option-check" />}
+                        </button>
+                      ))}
                     </div>
-                    {botsInCat.map((b) => (
-                      <button
-                        key={b.id}
-                        type="button"
-                        role="menuitem"
-                        className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
-                        onClick={() => {
-                          setBotId(b.id);
-                          setBotPickerOpen(false);
-                        }}
-                      >
-                        <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-                        <div className="bot-option-info">
-                          <span className="bot-option-name">{b.name}</span>
-                          <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
-                        </div>
-                        {b.id === defaultBotId && (
-                          <span className="bot-option-default" title="Default bot">
-                            <Star size={11} fill="currentColor" />
-                          </span>
-                        )}
-                        {b.id === bot.id && <Check size={14} className="bot-option-check" />}
-                      </button>
-                    ))}
+                  ))}
+                  <div className="dropdown-divider" />
+                  <div className="dropdown-footer-actions">
+                    <button
+                      type="button"
+                      className="composer-bot-create-btn"
+                      onClick={() => {
+                        setBotPickerOpen(false);
+                        setEditor({
+                          id: uid(),
+                          name: "",
+                          category: "Business and entrepreneurship",
+                          description: "",
+                          instructions: "",
+                          model: "openai/gpt-4o-mini",
+                          color: "mint",
+                          symbol: "✳",
+                        });
+                      }}
+                    >
+                      <Plus size={14} /> Create bot
+                    </button>
+                    <button
+                      type="button"
+                      className="composer-bot-create-btn"
+                      onClick={() => {
+                        setBotPickerOpen(false);
+                        setImportModalOpen(true);
+                      }}
+                    >
+                      <Upload size={14} /> Import bots
+                    </button>
                   </div>
-                ))}
-                <div className="dropdown-divider" />
-                <div className="dropdown-footer-actions">
-                  <button
-                    type="button"
-                    className="composer-bot-create-btn"
-                    onClick={() => {
-                      setBotPickerOpen(false);
-                      setEditor({
-                        id: uid(),
-                        name: "",
-                        category: "Business and entrepreneurship",
-                        description: "",
-                        instructions: "",
-                        model: "openai/gpt-4o-mini",
-                        color: "mint",
-                        symbol: "✳",
-                      });
-                    }}
-                  >
-                    <Plus size={14} /> Create bot
-                  </button>
-                  <button
-                    type="button"
-                    className="composer-bot-create-btn"
-                    onClick={() => {
-                      setBotPickerOpen(false);
-                      setImportModalOpen(true);
-                    }}
-                  >
-                    <Upload size={14} /> Import bots
-                  </button>
                 </div>
-              </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="composer-model-pill"
+              disabled={busy}
+              onClick={() => openModels("chat")}
+              aria-label={`Choose model: ${bot.model}`}
+            >
+              <span>{modelShortName}</span>
+              <ChevronDown size={13} />
+            </button>
+          </div>
+          <div className="composer-actions-right">
+            {busy ? (
+              <button
+                type="button"
+                className="composer-action-btn stop"
+                aria-label="Stop generation"
+                onClick={() => abort.current?.abort()}
+              >
+                <Square size={14} />
+              </button>
+            ) : (
+              <button
+                className="composer-action-btn send"
+                disabled={(!input.trim() && pendingAttachments.length === 0) || !ready}
+                aria-label="Send message"
+              >
+                <ArrowUp size={18} />
+              </button>
             )}
           </div>
-          <button
-            type="button"
-            className="composer-model-pill"
-            disabled={busy}
-            onClick={() => openModels("chat")}
-            aria-label={`Choose model: ${bot.model}`}
-          >
-            <span>{modelShortName}</span>
-            <ChevronDown size={13} />
-          </button>
-          {busy ? (
-            <button
-              type="button"
-              className="composer-action-btn stop"
-              aria-label="Stop generation"
-              onClick={() => abort.current?.abort()}
-            >
-              <Square size={14} />
-            </button>
-          ) : (
-            <button
-              className="composer-action-btn send"
-              disabled={(!input.trim() && pendingAttachments.length === 0) || !ready}
-              aria-label="Send message"
-            >
-              <ArrowUp size={18} />
-            </button>
-          )}
         </div>
       </div>
     </form>
@@ -1646,6 +1657,13 @@ export default function Home() {
 
   return (
     <div className="app-shell" suppressHydrationWarning>
+      {!sidebarCollapsed && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-label="Close sidebar"
+        />
+      )}
       {sidebarCollapsed && (
         <button
           type="button"
@@ -1659,7 +1677,7 @@ export default function Home() {
       )}
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`} suppressHydrationWarning>
         <div className="sidebar-top">
-          <a className="brand" href="/" aria-label="MyAdvisor home">
+          <a className="brand" href="/" aria-label="MyAdvisor home" onClick={closeSidebarOnMobile}>
             <span className="brand-icon">
               <AudioLines size={22} />
             </span>
@@ -1677,7 +1695,10 @@ export default function Home() {
         </div>
         <button
           className="new-chat"
-          onClick={() => newChat()}
+          onClick={() => {
+            newChat();
+            closeSidebarOnMobile();
+          }}
           disabled={busy || !bot}
           aria-label="Start new chat"
         >
@@ -1698,7 +1719,10 @@ export default function Home() {
             <button
               className={`nav-item ${view === n.id ? "active" : ""}`}
               key={n.id}
-              onClick={() => setView(n.id)}
+              onClick={() => {
+                setView(n.id);
+                closeSidebarOnMobile();
+              }}
             >
               <n.icon size={17} />
               {n.label}
@@ -1714,14 +1738,17 @@ export default function Home() {
             <button
               aria-label="Import bots"
               title="Import bots from JSON"
-              onClick={() => setImportModalOpen(true)}
+              onClick={() => {
+                setImportModalOpen(true);
+                closeSidebarOnMobile();
+              }}
             >
               <Upload size={14} />
             </button>
             <button
               aria-label="Create bot"
               title="Create new bot"
-              onClick={() =>
+              onClick={() => {
                 setEditor({
                   id: uid(),
                   name: "",
@@ -1731,8 +1758,9 @@ export default function Home() {
                   model: "openai/gpt-4o-mini",
                   color: "mint",
                   symbol: "✳",
-                })
-              }
+                });
+                closeSidebarOnMobile();
+              }}
             >
               <Plus size={15} />
             </button>
@@ -1749,7 +1777,10 @@ export default function Home() {
                 <div key={b.id} className="bot-nav-row">
                   <button
                     disabled={busy}
-                    onClick={() => newChat(b.id)}
+                    onClick={() => {
+                      newChat(b.id);
+                      closeSidebarOnMobile();
+                    }}
                     className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
                     title={`${b.name} (${cat})`}
                   >
@@ -1775,7 +1806,10 @@ export default function Home() {
           ))}
         </div>
         <div className="sidebar-bottom">
-          <button className="settings-link" onClick={() => setSettings(true)}>
+          <button className="settings-link" onClick={() => {
+            setSettings(true);
+            closeSidebarOnMobile();
+          }}>
             <Settings2 size={16} /> Settings{" "}
             <span className={connected ? "online-dot" : "offline-dot"} />
           </button>
@@ -1784,15 +1818,26 @@ export default function Home() {
       <main className="main">
         {view !== "chat" && (
           <header className="topbar">
-            <div className="breadcrumb">
-              Workspace <ChevronRight size={13} />
-              <span>
-                {view === "history"
-                  ? "Chat history"
-                  : view === "bots"
-                    ? "My bots"
-                    : "Knowledge wiki"}
-              </span>
+            <div className="topbar-left">
+              <button
+                type="button"
+                className="sidebar-toggle-btn-header"
+                onClick={toggleSidebar}
+                aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                title={sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+              >
+                <PanelLeftOpen size={18} />
+              </button>
+              <div className="breadcrumb">
+                Workspace <ChevronRight size={13} />
+                <span>
+                  {view === "history"
+                    ? "Chat history"
+                    : view === "bots"
+                      ? "My bots"
+                      : "Knowledge wiki"}
+                </span>
+              </div>
             </div>
             <div className="topbar-right">
               <span className="private-label">
@@ -1812,6 +1857,55 @@ export default function Home() {
         )}
         {view === "chat" && bot ? (
           <div className="chat-layout">
+            <header className="chat-topbar">
+              <div className="chat-topbar-left">
+                <button
+                  type="button"
+                  className="sidebar-toggle-btn-header"
+                  onClick={toggleSidebar}
+                  aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  title={sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+                >
+                  <PanelLeftOpen size={18} />
+                </button>
+                <div
+                  className="chat-header-bot-pill"
+                  onClick={toggleBotPicker}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Current bot: ${bot.name}. Click to switch bot.`}
+                  title="Switch bot"
+                >
+                  <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
+                  <div className="chat-header-bot-info">
+                    <span className="chat-header-bot-name">{bot.name}</span>
+                    <span className="chat-header-bot-model">{modelShortName}</span>
+                  </div>
+                  <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
+                </div>
+              </div>
+              <div className="chat-topbar-right">
+                <button
+                  type="button"
+                  className="topbar-new-chat-btn"
+                  onClick={() => newChat()}
+                  disabled={busy || !bot}
+                  aria-label="Start new chat"
+                  title="Start new chat (⌘K)"
+                >
+                  <Plus size={16} />
+                  <span className="topbar-new-chat-label">New chat</span>
+                </button>
+                <button
+                  className={`key-status ${connected ? "connected" : ""}`}
+                  onClick={() => setSettings(true)}
+                >
+                  <span className={connected ? "online-dot" : "offline-dot"} />
+                  <span className="key-status-text">{connected ? "API key secured" : connection.status === "checking" ? "Checking…" : "Connect API key"}</span>
+                  <ArrowUpRight size={13} />
+                </button>
+              </div>
+            </header>
             <section className="conversation">
               {chat?.messages.length ? (
                 <>
@@ -1972,7 +2066,7 @@ export default function Home() {
                   </div>
                 </>
               ) : (
-                <div className="chat-center-stage">
+                <div className="chat-center-stage welcome">
                   <h1 className="hero-greeting">Whats on your mind?</h1>
                   <div className="hero-composer-box">
                     {error && !settings && (
