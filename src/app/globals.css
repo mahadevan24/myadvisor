@@ -2264,21 +2264,6 @@ button:hover:not(:disabled) {
     opacity: 0.3;
   }
 }
-.source-chips {
-  color: #7f8b77;
-  font-size: 11px;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 16px 0;
-  padding-left: 48px;
-}
-.source-chips button {
-  border: 1px solid #39432f;
-  border-radius: 4px;
-  padding: 3px 6px;
-  color: #b0ce96;
-}
 .error-banner {
   border: 1px solid #724c3d;
   background: #32221e;

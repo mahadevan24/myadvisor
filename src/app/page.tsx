@@ -2048,16 +2048,6 @@ export default function Home() {
                           </article>
                         );
                       })}
-                      {!busy && sources.length > 0 && (
-                        <div className="source-chips">
-                          Wiki context:{" "}
-                          {sources.map((s, i) => (
-                            <button key={s.id} onClick={() => setEntry(s)}>
-                              [{i + 1}] {displayTitle(s.title, "Note").slice(0, 30)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                       <div ref={bottom} />
                     </div>
                   </div>
