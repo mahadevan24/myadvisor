@@ -35,8 +35,12 @@ import {
   QuickPrompt,
   Workspace,
   buildContext,
+  buildTitlePrompt,
+  cleanTitle,
   estimateTokens,
   initialWorkspace,
+  isGenericTitle,
+  isGreetingTitle,
   makeEntry,
   needsCompaction,
 } from "@/lib/memory";
@@ -62,13 +66,88 @@ const fallbackQuickPrompts = (bot: Bot): QuickPrompt[] => {
     { title: "Make a plan", text: "Turn an idea into next steps", prompt: "Help me turn an idea into a short, concrete plan with a useful first step." },
   ];
 };
+
+function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid: string } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const lastUid = preferredUid || localStorage.getItem("myadvisor.lastUid");
+    if (lastUid) {
+      const saved = localStorage.getItem(`myadvisor.workspace.v1.${lastUid}`);
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (
+          Array.isArray(data.bots) &&
+          Array.isArray(data.chats) &&
+          Array.isArray(data.entries)
+        ) {
+          return { workspace: data, uid: lastUid };
+        }
+      }
+    }
+    if (!preferredUid) {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (
+          key &&
+          key.startsWith("myadvisor.workspace.v1.") &&
+          key !== "myadvisor.workspace.v1.guest"
+        ) {
+          const foundUid = key.replace("myadvisor.workspace.v1.", "");
+          const saved = localStorage.getItem(key);
+          if (saved) {
+            const data = JSON.parse(saved);
+            if (
+              Array.isArray(data.bots) &&
+              Array.isArray(data.chats) &&
+              Array.isArray(data.entries)
+            ) {
+              try {
+                localStorage.setItem("myadvisor.lastUid", foundUid);
+              } catch {}
+              return { workspace: data, uid: foundUid };
+            }
+          }
+        }
+      }
+    }
+    const fallback =
+      localStorage.getItem("myadvisor.workspace.v1.guest") ||
+      localStorage.getItem("myadvisor.workspace.v1");
+    if (fallback) {
+      const data = JSON.parse(fallback);
+      if (
+        Array.isArray(data.bots) &&
+        Array.isArray(data.chats) &&
+        Array.isArray(data.entries)
+      ) {
+        return { workspace: data, uid: lastUid || "guest" };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function displayTitle(title?: string | null, fallback = "Conversation"): string {
+  if (isGenericTitle(title)) return fallback;
+  return title!;
+}
+
 export default function Home() {
-  const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
+  const [workspace, setWorkspace] = useState<Workspace>(() => {
+    const cached = getStoredWorkspace();
+    return cached?.workspace || initialWorkspace;
+  });
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("chat");
   const [defaultBotId, setDefaultBotId] = useState<string>(() => {
     if (typeof window !== "undefined") {
       try {
+        const cached = getStoredWorkspace();
+        const candidate = localStorage.getItem("myadvisor.defaultBotId") || cached?.workspace.defaultBotId;
+        if (candidate && (!cached?.workspace.bots.length || cached.workspace.bots.some((b) => b.id === candidate))) {
+          return candidate;
+        }
+        if (cached?.workspace.bots[0]?.id) return cached.workspace.bots[0].id;
         return localStorage.getItem("myadvisor.defaultBotId") || "nova";
       } catch {}
     }
@@ -77,6 +156,12 @@ export default function Home() {
   const [botId, setBotId] = useState<string>(() => {
     if (typeof window !== "undefined") {
       try {
+        const cached = getStoredWorkspace();
+        const candidate = localStorage.getItem("myadvisor.defaultBotId") || cached?.workspace.defaultBotId;
+        if (candidate && (!cached?.workspace.bots.length || cached.workspace.bots.some((b) => b.id === candidate))) {
+          return candidate;
+        }
+        if (cached?.workspace.bots[0]?.id) return cached.workspace.bots[0].id;
         return localStorage.getItem("myadvisor.defaultBotId") || "nova";
       } catch {}
     }
@@ -107,10 +192,34 @@ export default function Home() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [entry, setEntry] = useState<Entry | null>(null);
-  const [cloudUid, setCloudUid] = useState("");
-  const [sync, setSync] = useState("Local workspace");
+  const [cloudUid, setCloudUid] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = getStoredWorkspace();
+        if (cached?.uid && cached.uid !== "guest") return cached.uid;
+      } catch {}
+    }
+    return "";
+  });
+  const [sync, setSync] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = getStoredWorkspace();
+        if (cached?.uid && cached.uid !== "guest") return "Cloud synced";
+      } catch {}
+    }
+    return "Local workspace";
+  });
   const [cloudBusy, setCloudBusy] = useState(false);
-  const [account, setAccount] = useState<{ label: string; anonymous: boolean } | null>(null);
+  const [account, setAccount] = useState<{ label: string; anonymous: boolean } | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("myadvisor.lastAccount");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   function toggleSidebar() {
     setSidebarCollapsed((prev) => !prev);
@@ -119,6 +228,7 @@ export default function Home() {
   const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
   const abort = useRef<AbortController | null>(null);
   const promptAttempts = useRef(new Set<string>());
+  const titleAttempts = useRef(new Set<string>());
   const [promptBusy, setPromptBusy] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -171,22 +281,139 @@ export default function Home() {
         bots: current.bots.map((candidate) => candidate.id === target.id ? { ...candidate, quickPrompts } : candidate),
       })));
   }, [connected, cloudUid, workspace.bots]);
-  useEffect(() => watchAuth(user => {
-    setAccount(user ? { label: user.email || (user.isAnonymous ? "Anonymous account" : "Signed-in account"), anonymous: user.isAnonymous } : null);
-    if (!user) {
-      setCloudUid("");
+  useEffect(() => {
+    if (!connected || !cloudUid) return;
+    const targetChat = workspace.chats.find(
+      (c) =>
+        isGenericTitle(c.title) &&
+        c.messages.length > 0 &&
+        !titleAttempts.current.has(`chat:${c.id}`),
+    );
+    if (targetChat) {
+      titleAttempts.current.add(`chat:${targetChat.id}`);
+      const targetBot =
+        workspace.bots.find((b) => b.id === targetChat.botId) ||
+        workspace.bots[0];
+      void fetchGistTitle(
+        targetBot.model,
+        targetChat.messages,
+        `Discussion with ${targetBot.name}`,
+      ).then((newTitle) => {
+        if (!newTitle || isGenericTitle(newTitle)) return;
+        setWorkspace((current) => ({
+          ...current,
+          chats: current.chats.map((c) =>
+            c.id === targetChat.id ? { ...c, title: newTitle } : c,
+          ),
+          entries: current.entries.map((e) =>
+            e.chatId === targetChat.id || e.id === targetChat.id
+              ? { ...e, title: newTitle }
+              : e,
+          ),
+        }));
+      });
       return;
     }
-    void connectCloud(false).then(({ uid, workspace: saved }) => {
-      const ws = saved || initialWorkspace;
-      setWorkspace(ws);
-      setCloudUid(uid);
-      setSync("Cloud connected");
-      const targetDefault = ws.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
-      if (targetDefault && ws.bots.some((b: Bot) => b.id === targetDefault)) {
+
+    const targetEntry = workspace.entries.find(
+      (e) =>
+        isGenericTitle(e.title) &&
+        e.content &&
+        !titleAttempts.current.has(`entry:${e.id}`),
+    );
+    if (targetEntry) {
+      titleAttempts.current.add(`entry:${targetEntry.id}`);
+      const targetBot =
+        workspace.bots.find((b) => b.id === targetEntry.botId) ||
+        workspace.bots[0];
+      void fetchGistTitle(
+        targetBot.model,
+        targetEntry.content,
+        `Note from ${targetBot.name}`,
+      ).then((newTitle) => {
+        if (!newTitle || isGenericTitle(newTitle)) return;
+        setWorkspace((current) => ({
+          ...current,
+          entries: current.entries.map((e) =>
+            e.id === targetEntry.id ? { ...e, title: newTitle } : e,
+          ),
+          chats: current.chats.map((c) =>
+            c.id === targetEntry.chatId || c.id === targetEntry.id
+              ? { ...c, title: newTitle }
+              : c,
+          ),
+        }));
+      });
+      return;
+    }
+  }, [connected, cloudUid, workspace.chats, workspace.entries, workspace.bots]);
+  useEffect(() => watchAuth(user => {
+    const acct = user
+      ? { label: user.email || (user.isAnonymous ? "Anonymous account" : "Signed-in account"), anonymous: user.isAnonymous }
+      : null;
+    setAccount(acct);
+    if (acct) {
+      try {
+        localStorage.setItem("myadvisor.lastAccount", JSON.stringify(acct));
+      } catch {}
+    }
+    if (!user) {
+      setCloudUid("");
+      try {
+        if (localStorage.getItem("myadvisor.lastUid") !== "guest") {
+          localStorage.removeItem("myadvisor.lastUid");
+          localStorage.removeItem("myadvisor.lastAccount");
+          const guestCached = getStoredWorkspace("guest");
+          if (guestCached) {
+            setWorkspace(guestCached.workspace);
+            const targetDefault = guestCached.workspace.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+            if (targetDefault && guestCached.workspace.bots.some((b: Bot) => b.id === targetDefault)) {
+              setDefaultBotId(targetDefault);
+              setBotId(targetDefault);
+            }
+          } else {
+            setWorkspace(initialWorkspace);
+          }
+        }
+      } catch {}
+      return;
+    }
+    const userCached = getStoredWorkspace(user.uid);
+    if (userCached) {
+      setWorkspace(userCached.workspace);
+      const targetDefault = userCached.workspace.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+      if (targetDefault && userCached.workspace.bots.some((b: Bot) => b.id === targetDefault)) {
         setDefaultBotId(targetDefault);
         setBotId(targetDefault);
       }
+    }
+    setCloudUid(user.uid);
+    try {
+      localStorage.setItem("myadvisor.lastUid", user.uid);
+    } catch {}
+
+    setSync("Syncing…");
+    void connectCloud(false).then(({ uid, workspace: saved }) => {
+      if (saved) {
+        setWorkspace(saved);
+        const targetDefault = saved.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+        if (targetDefault && saved.bots.some((b: Bot) => b.id === targetDefault)) {
+          setDefaultBotId(targetDefault);
+          setBotId(targetDefault);
+        }
+        try {
+          localStorage.setItem(`myadvisor.workspace.v1.${uid}`, JSON.stringify(saved));
+        } catch {}
+      } else {
+        setWorkspace((current) => {
+          if (current.bots.length > 0) {
+            void saveCloud(uid, current).catch(() => {});
+          }
+          return current;
+        });
+      }
+      setCloudUid(uid);
+      setSync("Cloud connected");
     }).catch(() => setSync("Cloud connection failed"));
   }), []);
   function openModels(target: "chat" | "editor") {
@@ -219,25 +446,57 @@ export default function Home() {
       prompt: String(item.prompt || "").slice(0, 500),
     })).filter((item) => item.title && item.text && item.prompt);
   }
+  async function fetchGistTitle(
+    model: string,
+    transcript: Chat["messages"] | { role: string; content: string }[] | string,
+    fallbackTitle = "New conversation",
+  ): Promise<string> {
+    try {
+      const messages = buildTitlePrompt(transcript);
+      const token = await authToken();
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          max_tokens: 40,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return fallbackTitle;
+      const data = await res.json().catch(() => null);
+      const raw = data?.choices?.[0]?.message?.content;
+      if (!raw || typeof raw !== "string") return fallbackTitle;
+      return cleanTitle(raw, fallbackTitle);
+    } catch {
+      return fallbackTitle;
+    }
+  }
   useEffect(() => {
     try {
-      const saved =
-        localStorage.getItem("myadvisor.workspace.v1.guest") ||
-        localStorage.getItem("myadvisor.workspace.v1");
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (
-          Array.isArray(data.bots) &&
-          Array.isArray(data.chats) &&
-          Array.isArray(data.entries)
-        ) {
-          setWorkspace(data);
-          const targetDefault = data.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
-          if (targetDefault && data.bots.some((b: Bot) => b.id === targetDefault)) {
-            setDefaultBotId(targetDefault);
-            setBotId(targetDefault);
-          }
+      const cached = getStoredWorkspace();
+      if (cached) {
+        setWorkspace(cached.workspace);
+        if (cached.uid && cached.uid !== "guest") {
+          setCloudUid(cached.uid);
+          setSync("Cloud synced");
         }
+        const targetDefault = cached.workspace.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+        if (targetDefault && cached.workspace.bots.some((b: Bot) => b.id === targetDefault)) {
+          setDefaultBotId(targetDefault);
+          setBotId(targetDefault);
+        }
+      }
+      const savedAccount = localStorage.getItem("myadvisor.lastAccount");
+      if (savedAccount) {
+        try {
+          setAccount(JSON.parse(savedAccount));
+        } catch {}
       }
     } catch {
       setError("Could not restore the local workspace.");
@@ -248,10 +507,12 @@ export default function Home() {
     if (!ready) return;
     const persist = () => {
       try {
+        const uidKey = cloudUid || "guest";
         localStorage.setItem(
-          `myadvisor.workspace.v1.${cloudUid || "guest"}`,
+          `myadvisor.workspace.v1.${uidKey}`,
           JSON.stringify(workspace),
         );
+        localStorage.setItem("myadvisor.lastUid", uidKey);
       } catch {
         setError("Browser storage is full. Export your workspace in Settings.");
       }
@@ -458,7 +719,9 @@ export default function Home() {
       : {
           id: uid(),
           botId: bot.id,
-          title: trimmed.slice(0, 65),
+          title: isGenericTitle(trimmed)
+            ? `Discussion with ${bot.name}`
+            : trimmed.slice(0, 65),
           messages: [],
           summary: "",
           compactedCount: 0,
@@ -532,6 +795,33 @@ export default function Home() {
         updateChat(current);
       });
       updateChat(current, true);
+
+      const shouldTitle =
+        isGreetingTitle(current.title) ||
+        current.messages.length <= 2 ||
+        current.title === current.messages[0]?.content?.slice(0, 65);
+
+      if (shouldTitle) {
+        void fetchGistTitle(
+          bot.model,
+          current.messages,
+          `Discussion with ${bot.name}`,
+        ).then((gist) => {
+          if (gist && !isGenericTitle(gist) && gist !== current.title) {
+            setWorkspace((w) => ({
+              ...w,
+              chats: w.chats.map((c) =>
+                c.id === current.id ? { ...c, title: gist } : c,
+              ),
+              entries: w.entries.map((e) =>
+                e.chatId === current.id || e.id === current.id
+                  ? { ...e, title: gist }
+                  : e,
+              ),
+            }));
+          }
+        });
+      }
     } catch (e) {
       const stopped = controller.signal.aborted;
       setError(
@@ -557,8 +847,18 @@ export default function Home() {
     setError("");
     try {
       const connected = await connectCloud(google);
-      setWorkspace(connected.workspace || initialWorkspace);
+      const ws = connected.workspace || initialWorkspace;
+      setWorkspace(ws);
       setCloudUid(connected.uid);
+      try {
+        localStorage.setItem("myadvisor.lastUid", connected.uid);
+        localStorage.setItem(`myadvisor.workspace.v1.${connected.uid}`, JSON.stringify(ws));
+      } catch {}
+      const targetDefault = ws.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+      if (targetDefault && ws.bots.some((b: Bot) => b.id === targetDefault)) {
+        setDefaultBotId(targetDefault);
+        setBotId(targetDefault);
+      }
       setSync("Cloud connected");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Cloud connection failed.");
@@ -601,6 +901,11 @@ export default function Home() {
     setChatId(null);
     setConnection({ status: "idle" });
     setSync("Local workspace");
+    try {
+      localStorage.removeItem("myadvisor.lastUid");
+      localStorage.removeItem("myadvisor.lastAccount");
+      localStorage.removeItem("myadvisor.defaultBotId");
+    } catch {}
   }
   function exportData() {
     const a = document.createElement("a");
@@ -735,7 +1040,7 @@ export default function Home() {
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" suppressHydrationWarning>
       {sidebarCollapsed && (
         <button
           type="button"
@@ -747,7 +1052,7 @@ export default function Home() {
           <PanelLeftOpen size={19} />
         </button>
       )}
-      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`} suppressHydrationWarning>
         <div className="sidebar-top">
           <a className="brand" href="/" aria-label="MyAdvisor home">
             <span className="brand-icon">
@@ -854,7 +1159,7 @@ export default function Home() {
                 onClick={() => openChat(c.id)}
               >
                 <MessageSquare size={13} />
-                <span>{c.title}</span>
+                <span>{displayTitle(c.title)}</span>
               </button>
             ))
           ) : (
@@ -950,7 +1255,7 @@ export default function Home() {
                           Wiki context:{" "}
                           {sources.map((s, i) => (
                             <button key={s.id} onClick={() => setEntry(s)}>
-                              [{i + 1}] {s.title.slice(0, 30)}
+                              [{i + 1}] {displayTitle(s.title, "Note").slice(0, 30)}
                             </button>
                           ))}
                         </div>
@@ -1085,7 +1390,7 @@ export default function Home() {
                   <button className="entry-card history-card" key={c.id} onClick={() => openChat(c.id)}>
                     <MessageSquare size={21} />
                     <span className="entry-bot">{workspace.bots.find((b) => b.id === c.botId)?.name} · CONVERSATION</span>
-                    <h2>{c.title}</h2>
+                    <h2>{displayTitle(c.title)}</h2>
                     <p>{c.messages.at(-1)?.content?.slice(0, 170) || "No messages yet."}</p>
                     <footer>{new Date(c.updatedAt).toLocaleDateString()} <ArrowUpRight size={16} /></footer>
                   </button>
@@ -1134,7 +1439,7 @@ export default function Home() {
                   ))
                 : workspace.entries
                     .filter((e) =>
-                      (e.title + " " + e.content)
+                      (displayTitle(e.title, "Conversation Note") + " " + e.content)
                         .toLowerCase()
                         .includes(search.toLowerCase()),
                     )
@@ -1149,7 +1454,7 @@ export default function Home() {
                           {workspace.bots.find((b) => b.id === e.botId)?.name} ·
                           CONVERSATION NOTE
                         </span>
-                        <h2>{e.title}</h2>
+                        <h2>{displayTitle(e.title, "Conversation Note")}</h2>
                         <p>{e.content.slice(0, 170)}…</p>
                         <footer>
                           {new Date(e.updatedAt).toLocaleDateString()}
@@ -1184,7 +1489,7 @@ export default function Home() {
             )}
             {view === "wiki" &&
               !workspace.entries.filter((e) =>
-                (e.title + " " + e.content)
+                (displayTitle(e.title, "Conversation Note") + " " + e.content)
                   .toLowerCase()
                   .includes(search.toLowerCase()),
               ).length && (
@@ -1494,7 +1799,7 @@ export default function Home() {
             <div className="modal-eyebrow">
               <BookOpen size={16} /> CONVERSATION KNOWLEDGE
             </div>
-            <h2 id="entry-title">{entry.title}</h2>
+            <h2 id="entry-title">{displayTitle(entry.title, "Conversation Note")}</h2>
             <p className="field-help">
               Automatically collected conversation excerpts, not independently
               verified facts.

@@ -6,6 +6,10 @@ import {
   needsCompaction,
   retrieve,
   makeEntry,
+  isGenericTitle,
+  isGreetingTitle,
+  cleanTitle,
+  buildTitlePrompt,
   type Chat,
   type Entry,
 } from "../src/lib/memory";
@@ -107,4 +111,54 @@ test("many short messages trigger compaction before exceeding API message limits
   const data = { ...chat, messages: Array.from({ length: 90 }, (_, i) => ({ id: String(i), role: "user" as const, content: "hello" })) };
   assert.ok(needsCompaction(data));
   assert.ok(buildContext(data, initialWorkspace.bots[0], []).messages.length <= 80);
+});
+test("generic titles are identified and cleaned appropriately", () => {
+  assert.ok(isGenericTitle("hi"));
+  assert.ok(isGenericTitle("Hi!"));
+  assert.ok(isGenericTitle("'hi'"));
+  assert.ok(isGenericTitle("hello"));
+  assert.ok(isGenericTitle("New conversation"));
+  assert.ok(isGenericTitle(""));
+  assert.ok(!isGenericTitle("Quantum Computing"));
+  assert.ok(!isGenericTitle("Explain neural networks"));
+
+  assert.ok(isGreetingTitle("hi"));
+  assert.ok(isGreetingTitle("Friendly greeting"));
+  assert.ok(isGreetingTitle("Conversation with Nova"));
+  assert.ok(!isGreetingTitle("Quantum Computing"));
+
+  assert.equal(cleanTitle('Title: "Quantum Computing 101"'), "Quantum Computing 101");
+  assert.equal(cleanTitle('**Distributed Caches**'), "Distributed Caches");
+  assert.equal(cleanTitle('hi', 'Discussion'), "Discussion");
+  assert.equal(cleanTitle('', 'Discussion'), "Discussion");
+
+  const prompt = buildTitlePrompt([
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "Hello! How can I help?" },
+  ]);
+  assert.equal(prompt.length, 2);
+  assert.ok(prompt[0].content.includes("gist"));
+  assert.ok(prompt[1].content.includes("User: hi"));
+
+  // makeEntry falls back from generic 'hi' title to substantive question or note
+  const entryFromHi = makeEntry({
+    ...chat,
+    title: "hi",
+    messages: [
+      { id: "1", role: "user", content: "hi" },
+      { id: "2", role: "assistant", content: "Hello!" },
+      { id: "3", role: "user", content: "How does GPS work?" },
+    ],
+  });
+  assert.equal(entryFromHi.title, "How does GPS work?");
+
+  const entryFromPureHi = makeEntry({
+    ...chat,
+    title: "hi",
+    messages: [
+      { id: "1", role: "user", content: "hi" },
+      { id: "2", role: "assistant", content: "Hello!" },
+    ],
+  });
+  assert.equal(entryFromPureHi.title, "Conversation note");
 });

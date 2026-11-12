@@ -158,12 +158,113 @@ export function buildContext(chat: Chat, bot: Bot, entries: Entry[]) {
     sources,
   };
 }
+const GENERIC_TITLE_WORDS = new Set([
+  "",
+  "hi",
+  "hello",
+  "hey",
+  "hi there",
+  "hello there",
+  "hey there",
+  "greetings",
+  "greeting",
+  "hola",
+  "howdy",
+  "untitled",
+  "new chat",
+  "new conversation",
+  "conversation",
+  "chat",
+]);
+
+export function isGenericTitle(title?: string | null): boolean {
+  if (!title) return true;
+  const normalized = title
+    .trim()
+    .toLowerCase()
+    .replace(/^["'`#*]+|["'`#*!?.-\s]+$/g, "")
+    .trim();
+  return GENERIC_TITLE_WORDS.has(normalized);
+}
+
+export function isGreetingTitle(title?: string | null): boolean {
+  if (!title) return true;
+  if (isGenericTitle(title)) return true;
+  const normalized = title
+    .trim()
+    .toLowerCase()
+    .replace(/^["'`#*]+|["'`#*!?.-\s]+$/g, "")
+    .trim();
+  return (
+    normalized === "friendly greeting" ||
+    normalized === "introduction" ||
+    normalized === "friendly introduction" ||
+    normalized === "getting started" ||
+    normalized.startsWith("conversation with ") ||
+    normalized.startsWith("discussion with ") ||
+    normalized.startsWith("note from ")
+  );
+}
+
+export function cleanTitle(raw: string, fallback = "New conversation"): string {
+  if (!raw) return fallback;
+  let cleaned = raw
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^(?:title|topic|subject)\s*:\s*/i, "")
+    .replace(/^\s*#+\s*/g, "")
+    .replace(/\*+/g, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+
+  cleaned = cleaned.replace(/[.!?]+$/, "").trim();
+
+  if (!cleaned || isGenericTitle(cleaned)) {
+    return fallback;
+  }
+  return cleaned.slice(0, 65);
+}
+
+export function buildTitlePrompt(
+  input: Message[] | { role: string; content: string }[] | string,
+) {
+  let transcript = "";
+  if (typeof input === "string") {
+    transcript = input.slice(0, 2000);
+  } else {
+    transcript = input
+      .filter((m) => m.content && m.content.trim())
+      .slice(-6)
+      .map(
+        (m) =>
+          `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 400)}`,
+      )
+      .join("\n\n")
+      .slice(0, 2000);
+  }
+  return [
+    {
+      role: "system" as const,
+      content:
+        "Generate a short, concise, descriptive title (2 to 5 words) capturing the gist of this conversation. Do not use quotes, punctuation, prefixes like 'Title:', markdown, or generic greetings like 'Hi'. Return only the plain title text.",
+    },
+    {
+      role: "user" as const,
+      content: transcript || "New conversation",
+    },
+  ];
+}
+
 export function makeEntry(chat: Chat): Entry {
+  const safeTitle = isGenericTitle(chat.title)
+    ? (chat.messages.find((m) => m.role === "user" && !isGenericTitle(m.content))?.content?.slice(0, 60)?.trim() ||
+       "Conversation note")
+    : chat.title;
   return {
     id: chat.id,
     botId: chat.botId,
     chatId: chat.id,
-    title: chat.title,
+    title: safeTitle,
     content: [
       chat.summary,
       ...chat.messages
