@@ -390,28 +390,40 @@ export default function Home() {
     if (!items) return;
 
     const files: File[] = [];
+    const seen = new Set<string>();
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.type.startsWith("image/")) {
         const file = item.getAsFile();
         if (file) {
-          const ext = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
-          const namedFile =
-            file.name && file.name !== "image.png"
-              ? file
-              : new File([file], `Pasted-Image-${Date.now()}.${ext}`, {
-                  type: file.type,
-                });
-          files.push(namedFile);
+          const key = `${file.name}-${file.size}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            const ext = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+            const namedFile =
+              file.name && file.name !== "image.png"
+                ? file
+                : new File([file], `Pasted-Image-${Date.now()}.${ext}`, {
+                    type: file.type,
+                  });
+            files.push(namedFile);
+          }
         }
       } else if (item.kind === "file") {
         const file = item.getAsFile();
-        if (file) files.push(file);
+        if (file) {
+          const key = `${file.name}-${file.size}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            files.push(file);
+          }
+        }
       }
     }
 
     if (files.length > 0) {
       e.preventDefault();
+      e.stopPropagation();
       await handleFiles(files);
     }
   }
@@ -422,21 +434,37 @@ export default function Home() {
       if (
         active &&
         (active.tagName === "INPUT" ||
-          (active.tagName === "TEXTAREA" && active !== inputRef.current))
+          active.tagName === "TEXTAREA" ||
+          (active as HTMLElement).isContentEditable)
       ) {
         return;
       }
       const items = e.clipboardData?.items;
       if (!items) return;
       const files: File[] = [];
+      const seen = new Set<string>();
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.startsWith("image/") || items[i].kind === "file") {
           const f = items[i].getAsFile();
-          if (f) files.push(f);
+          if (f) {
+            const key = `${f.name}-${f.size}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              const ext = f.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+              const namedFile =
+                f.name && f.name !== "image.png"
+                  ? f
+                  : new File([f], `Pasted-Image-${Date.now()}.${ext}`, {
+                      type: f.type,
+                    });
+              files.push(namedFile);
+            }
+          }
         }
       }
       if (files.length > 0) {
         e.preventDefault();
+        e.stopPropagation();
         void handleFiles(files);
         inputRef.current?.focus();
       }
