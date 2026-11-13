@@ -2251,19 +2251,21 @@ export default function Home() {
                   <span className="chat-model-badge">{bot.model.split("/").pop()}</span>
                 </div>
                 <div className="chat-header-actions">
-                  <button
-                    type="button"
-                    className={`checklist-toggle-btn ${checklistOpen ? "active" : ""}`}
-                    onClick={toggleChecklist}
-                    title={checklistOpen ? "Collapse checklist" : "Expand checklist"}
-                    aria-label={checklistOpen ? "Collapse checklist" : "Expand checklist"}
-                  >
-                    <ListTodo size={15} />
-                    <span className="checklist-toggle-label">Checklist</span>
-                    {pendingTodoCount > 0 && (
-                      <span className="checklist-badge">{pendingTodoCount}</span>
-                    )}
-                  </button>
+                  {!checklistOpen && (
+                    <button
+                      type="button"
+                      className="checklist-toggle-btn"
+                      onClick={toggleChecklist}
+                      title="Open checklist"
+                      aria-label="Open checklist"
+                    >
+                      <ListTodo size={15} />
+                      <span className="checklist-toggle-label">Checklist</span>
+                      {pendingTodoCount > 0 && (
+                        <span className="checklist-badge">{pendingTodoCount}</span>
+                      )}
+                    </button>
+                  )}
                 </div>
               </header>
               {chat?.messages.length ? (
@@ -2501,57 +2503,62 @@ export default function Home() {
             )}
             <aside
               className={`checklist-pane ${checklistOpen ? "open" : "collapsed"}`}
-              aria-label="Action Checklist"
+              aria-label="Checklist"
             >
               <div className="checklist-header">
                 <div className="checklist-title-wrap">
-                  <ListTodo size={16} className="checklist-icon" />
                   <h3 className="checklist-title">Checklist</h3>
-                  <span className="checklist-count-chip">
-                    {completedTodoCount}/{totalTodoCount}
-                  </span>
+                  {totalTodoCount > 0 && (
+                    <span className="checklist-count-chip">
+                      {completedTodoCount}/{totalTodoCount}
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
                   className="checklist-close-btn"
                   onClick={toggleChecklist}
-                  title="Collapse checklist"
-                  aria-label="Collapse checklist"
+                  title="Close checklist"
+                  aria-label="Close checklist"
                 >
                   <PanelRightClose size={16} />
                 </button>
               </div>
 
-              <div className="checklist-progress-bar" title={`${progressPercent}% completed`}>
-                <div
-                  className="checklist-progress-fill"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
+              {totalTodoCount > 0 && (
+                <>
+                  <div className="checklist-progress-bar" title={`${progressPercent}% completed`}>
+                    <div
+                      className="checklist-progress-fill"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
 
-              <div className="checklist-filters">
-                <button
-                  type="button"
-                  className={`checklist-filter-tab ${checklistFilter === "all" ? "active" : ""}`}
-                  onClick={() => setChecklistFilter("all")}
-                >
-                  All ({totalTodoCount})
-                </button>
-                <button
-                  type="button"
-                  className={`checklist-filter-tab ${checklistFilter === "pending" ? "active" : ""}`}
-                  onClick={() => setChecklistFilter("pending")}
-                >
-                  Active ({pendingTodoCount})
-                </button>
-                <button
-                  type="button"
-                  className={`checklist-filter-tab ${checklistFilter === "completed" ? "active" : ""}`}
-                  onClick={() => setChecklistFilter("completed")}
-                >
-                  Done ({completedTodoCount})
-                </button>
-              </div>
+                  <div className="checklist-filters">
+                    <button
+                      type="button"
+                      className={`checklist-filter-tab ${checklistFilter === "all" ? "active" : ""}`}
+                      onClick={() => setChecklistFilter("all")}
+                    >
+                      All ({totalTodoCount})
+                    </button>
+                    <button
+                      type="button"
+                      className={`checklist-filter-tab ${checklistFilter === "pending" ? "active" : ""}`}
+                      onClick={() => setChecklistFilter("pending")}
+                    >
+                      Active ({pendingTodoCount})
+                    </button>
+                    <button
+                      type="button"
+                      className={`checklist-filter-tab ${checklistFilter === "completed" ? "active" : ""}`}
+                      onClick={() => setChecklistFilter("completed")}
+                    >
+                      Done ({completedTodoCount})
+                    </button>
+                  </div>
+                </>
+              )}
 
               <form
                 className="checklist-add-form"
@@ -2563,7 +2570,7 @@ export default function Home() {
                 <input
                   type="text"
                   className="checklist-add-input"
-                  placeholder="Add an action item..."
+                  placeholder="Add a task..."
                   value={newTodoInput}
                   onChange={(e) => setNewTodoInput(e.target.value)}
                 />
@@ -2581,17 +2588,17 @@ export default function Home() {
               <div className="checklist-items-scroll">
                 {filteredTodos.length === 0 ? (
                   <div className="checklist-empty">
-                    <ListTodo size={26} />
+                    <ListTodo size={22} className="checklist-empty-icon" />
                     <p className="checklist-empty-title">
                       {checklistFilter === "completed"
-                        ? "No completed tasks yet"
-                        : checklistFilter === "pending"
-                          ? "All caught up!"
-                          : "No action items yet"}
+                        ? "No completed tasks"
+                        : checklistFilter === "pending" && totalTodoCount > 0
+                          ? "All tasks completed"
+                          : "No tasks yet"}
                     </p>
                     <span className="checklist-empty-hint">
-                      {checklistFilter === "all"
-                        ? "When your goal-oriented bots identify next steps, they'll add them here. You can also add tasks manually."
+                      {totalTodoCount === 0
+                        ? "Bots will add tasks when discussing goals."
                         : ""}
                     </span>
                   </div>
