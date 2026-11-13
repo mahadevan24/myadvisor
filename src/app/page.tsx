@@ -791,29 +791,14 @@ export default function Home() {
       setSidebarCollapsed(true);
     }
   }
-  const [checklistOpen, setChecklistOpen] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("myadvisor.checklistOpen");
-        if (saved !== null) return saved === "true";
-        return window.innerWidth >= 1200;
-      } catch {}
-    }
-    return false;
-  });
+  const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistFilter, setChecklistFilter] = useState<"all" | "pending" | "completed">("all");
   const [newTodoInput, setNewTodoInput] = useState("");
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editingTodoText, setEditingTodoText] = useState("");
 
   function toggleChecklist() {
-    setChecklistOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("myadvisor.checklistOpen", String(next));
-      } catch {}
-      return next;
-    });
+    setChecklistOpen((prev) => !prev);
   }
 
   function handleAddTodo(text = newTodoInput) {
@@ -2382,7 +2367,7 @@ export default function Home() {
           placeholder={
             pendingAttachments.length > 0
               ? "Add instructions or ask a question…"
-              : "Ask, imagine, build anything…"
+              : "Ask, imagine, let it out anything on your mind..."
           }
           value={input}
           onPaste={handlePaste}
