@@ -14,9 +14,16 @@ import {
   isGreeting,
   isCuratedBot,
   mergeBots,
+  formatTodosContext,
+  getTodoInstructions,
+  stripTodoActionTags,
+  parseTodoActions,
+  applyTodoActions,
   type Bot,
   type Chat,
   type Entry,
+  type Todo,
+  type TodoAction,
 } from "../src/lib/memory";
 import { readStream } from "../src/lib/stream";
 const chat: Chat = {
@@ -515,4 +522,135 @@ test("context management bounds token usage by trimming heavy attachments on old
   assert.ok(Array.isArray(latestMsg.content));
   const parts = latestMsg.content as any[];
   assert.ok(parts.some((p) => p.type === "image_url"));
+});
+
+test("formatTodosContext formats checklist items and completed status correctly", () => {
+  assert.ok(formatTodosContext([]).includes("(No action items"));
+
+  const sampleTodos: Todo[] = [
+    {
+      id: "t1",
+      text: "Calculate nozzle heat dissipation",
+      completed: false,
+      createdAt: 1000,
+      sourceBotName: "Elon Musk",
+    },
+    {
+      id: "t2",
+      text: "Draft weekly reflection",
+      completed: true,
+      createdAt: 900,
+      completedAt: 950,
+    },
+  ];
+
+  const formatted = formatTodosContext(sampleTodos);
+  assert.ok(formatted.includes('- [ ] (id: "t1") Calculate nozzle heat dissipation (from Elon Musk) [PENDING]'));
+  assert.ok(formatted.includes('- [x] (id: "t2") Draft weekly reflection [COMPLETED]'));
+});
+
+test("parseTodoActions extracts XML and code block actions and cleans text", () => {
+  const rawWithXml = `Great analysis! Let's do this next:
+<todo_action action="add" text="Test thermal limits of battery cells" />
+Let me know when you finish.`;
+
+  const parsed1 = parseTodoActions(rawWithXml);
+  assert.equal(parsed1.actions.length, 1);
+  assert.equal(parsed1.actions[0].action, "add");
+  assert.equal(parsed1.actions[0].text, "Test thermal limits of battery cells");
+  assert.ok(!parsed1.cleaned.includes("<todo_action"));
+  assert.ok(parsed1.cleaned.includes("Great analysis!"));
+
+  const rawWithCodeBlock = `Here is the plan:
+\`\`\`todo_action
+{"action": "complete", "id": "t1"}
+\`\`\`
+Moving to step 2.`;
+
+  const parsed2 = parseTodoActions(rawWithCodeBlock);
+  assert.equal(parsed2.actions.length, 1);
+  assert.equal(parsed2.actions[0].action, "complete");
+  assert.equal(parsed2.actions[0].id, "t1");
+  assert.ok(!parsed2.cleaned.includes("todo_action"));
+});
+
+test("stripTodoActionTags removes raw or partial tags without corrupting markdown", () => {
+  const full = "Hello world <todo_action action=\"add\" text=\"Task\" /> more text";
+  assert.equal(stripTodoActionTags(full), "Hello world  more text");
+
+  const streamingPartial = "Hello world <todo_action action=\"add\" text=";
+  assert.equal(stripTodoActionTags(streamingPartial), "Hello world");
+});
+
+test("applyTodoActions correctly handles add, complete, update, delete", () => {
+  const initial: Todo[] = [
+    { id: "todo_1", text: "Original task", completed: false, createdAt: 100 },
+  ];
+
+  // Add
+  const addResult = applyTodoActions(
+    initial,
+    [{ action: "add", text: "New priority task" }],
+    { id: "elon-musk", name: "Elon Musk" },
+    "chat_1",
+  );
+  assert.equal(addResult.nextTodos.length, 2);
+  assert.equal(addResult.nextTodos[0].text, "New priority task");
+  assert.equal(addResult.nextTodos[0].sourceBotName, "Elon Musk");
+  assert.equal(addResult.nextTodos[0].completed, false);
+
+  // Complete
+  const completeResult = applyTodoActions(addResult.nextTodos, [
+    { action: "complete", id: "todo_1" },
+  ]);
+  const completedItem = completeResult.nextTodos.find((t) => t.id === "todo_1");
+  assert.ok(completedItem);
+  assert.equal(completedItem.completed, true);
+  assert.ok(completedItem.completedAt);
+
+  // Update
+  const updateResult = applyTodoActions(completeResult.nextTodos, [
+    { action: "update", id: "todo_1", text: "Updated task description" },
+  ]);
+  const updatedItem = updateResult.nextTodos.find((t) => t.id === "todo_1");
+  assert.ok(updatedItem);
+  assert.equal(updatedItem.text, "Updated task description");
+
+  // Delete
+  const deleteResult = applyTodoActions(updateResult.nextTodos, [
+    { action: "delete", id: "todo_1" },
+  ]);
+  assert.equal(deleteResult.nextTodos.length, 1);
+  assert.ok(!deleteResult.nextTodos.some((t) => t.id === "todo_1"));
+});
+
+test("buildContext includes checklist context, instructions, and persona guidelines", () => {
+  const elonBot = initialWorkspace.bots.find((b) => b.id === "elon-musk") || initialWorkspace.bots[0];
+  const sampleTodos: Todo[] = [
+    { id: "td1", text: "Ship MVP v1", completed: true, createdAt: 100 },
+    { id: "td2", text: "Reduce cycle time by 50%", completed: false, createdAt: 200 },
+  ];
+
+  const testChat: Chat = {
+    id: "chat_goal",
+    botId: elonBot.id,
+    title: "Launch planning",
+    messages: [{ id: "m1", role: "user", content: "What is my next priority?" }],
+    summary: "",
+    compactedCount: 0,
+    updatedAt: Date.now(),
+  };
+
+  const { messages } = buildContext(testChat, elonBot, [], new Date(), sampleTodos);
+  const sys = messages[0].content as string;
+
+  // Bot prompt knows about current todos and completed status
+  assert.ok(sys.includes("CURRENT USER CHECKLIST / TODOS:"));
+  assert.ok(sys.includes('- [x] (id: "td1") Ship MVP v1 [COMPLETED]'));
+  assert.ok(sys.includes('- [ ] (id: "td2") Reduce cycle time by 50% [PENDING]'));
+
+  // Includes persona guidelines for Elon Musk vs Osho
+  assert.ok(sys.includes("Elon Musk"));
+  assert.ok(sys.includes("Osho"));
+  assert.ok(sys.includes("<todo_action action="));
 });

@@ -7,17 +7,23 @@ import {
   AudioLines,
   BookOpen,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Circle,
   Download,
   ExternalLink,
   FileText,
   KeyRound,
   Layers3,
+  ListTodo,
   Lock,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Pencil,
   Plus,
   Search,
   Settings2,
@@ -38,7 +44,10 @@ import {
   Chat,
   Entry,
   QuickPrompt,
+  Todo,
+  TodoAction,
   Workspace,
+  applyTodoActions,
   buildContext,
   buildTitlePrompt,
   cleanTitle,
@@ -51,6 +60,8 @@ import {
   makeEntry,
   mergeBots,
   needsCompaction,
+  parseTodoActions,
+  stripTodoActionTags,
 } from "@/lib/memory";
 import { authToken, connectCloud, disconnectCloud, firebaseConfigured, saveCloud, watchAuth } from "@/lib/firebase";
 import {
@@ -266,6 +277,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
           Array.isArray(data.entries)
         ) {
           data.bots = mergeBots(data.bots, recovered);
+          data.todos = Array.isArray(data.todos) ? data.todos : [];
           return { workspace: data, uid: lastUid };
         }
       }
@@ -291,6 +303,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
                 localStorage.setItem("myadvisor.lastUid", foundUid);
               } catch {}
               data.bots = mergeBots(data.bots, recovered);
+              data.todos = Array.isArray(data.todos) ? data.todos : [];
               return { workspace: data, uid: foundUid };
             }
           }
@@ -308,6 +321,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
         Array.isArray(data.entries)
       ) {
         data.bots = mergeBots(data.bots, recovered);
+        data.todos = Array.isArray(data.todos) ? data.todos : [];
         return { workspace: data, uid: lastUid || "guest" };
       }
     }
@@ -605,6 +619,105 @@ export default function Home() {
       setSidebarCollapsed(true);
     }
   }
+  const [checklistOpen, setChecklistOpen] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("myadvisor.checklistOpen");
+        if (saved !== null) return saved === "true";
+        return window.innerWidth >= 1200;
+      } catch {}
+    }
+    return false;
+  });
+  const [checklistFilter, setChecklistFilter] = useState<"all" | "pending" | "completed">("all");
+  const [newTodoInput, setNewTodoInput] = useState("");
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [editingTodoText, setEditingTodoText] = useState("");
+
+  function toggleChecklist() {
+    setChecklistOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("myadvisor.checklistOpen", String(next));
+      } catch {}
+      return next;
+    });
+  }
+
+  function handleAddTodo(text = newTodoInput) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const newTodo: Todo = {
+      id: `todo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      text: trimmed,
+      completed: false,
+      createdAt: Date.now(),
+    };
+    setWorkspace((w) => ({
+      ...w,
+      todos: [newTodo, ...(w.todos || [])],
+    }));
+    setNewTodoInput("");
+  }
+
+  function handleToggleTodo(id: string) {
+    setWorkspace((w) => ({
+      ...w,
+      todos: (w.todos || []).map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              completed: !t.completed,
+              completedAt: !t.completed ? Date.now() : undefined,
+            }
+          : t,
+      ),
+    }));
+  }
+
+  function handleStartEditTodo(todo: Todo) {
+    setEditingTodoId(todo.id);
+    setEditingTodoText(todo.text);
+  }
+
+  function handleSaveEditTodo(id: string) {
+    const trimmed = editingTodoText.trim();
+    if (trimmed) {
+      setWorkspace((w) => ({
+        ...w,
+        todos: (w.todos || []).map((t) =>
+          t.id === id ? { ...t, text: trimmed } : t,
+        ),
+      }));
+    }
+    setEditingTodoId(null);
+    setEditingTodoText("");
+  }
+
+  function handleDeleteTodo(id: string) {
+    setWorkspace((w) => ({
+      ...w,
+      todos: (w.todos || []).filter((t) => t.id !== id),
+    }));
+  }
+
+  function handleClearCompletedTodos() {
+    setWorkspace((w) => ({
+      ...w,
+      todos: (w.todos || []).filter((t) => !t.completed),
+    }));
+  }
+
+  const todos = workspace.todos || [];
+  const totalTodoCount = todos.length;
+  const completedTodoCount = todos.filter((t) => t.completed).length;
+  const pendingTodoCount = totalTodoCount - completedTodoCount;
+  const progressPercent = totalTodoCount > 0 ? Math.round((completedTodoCount / totalTodoCount) * 100) : 0;
+  const filteredTodos = useMemo(() => {
+    if (checklistFilter === "pending") return todos.filter((t) => !t.completed);
+    if (checklistFilter === "completed") return todos.filter((t) => t.completed);
+    return todos;
+  }, [todos, checklistFilter]);
   const [sources, setSources] = useState<Entry[]>([]);
   const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -1313,7 +1426,7 @@ export default function Home() {
         };
         updateChat(current);
       }
-      const context = buildContext(current, bot, workspace.entries);
+      const context = buildContext(current, bot, workspace.entries, new Date(), workspace.todos || []);
       setSources(context.sources);
       setPhase("Thinking");
       const assistantId = uid();
@@ -1411,10 +1524,37 @@ export default function Home() {
         1,
         Math.round(((firstChunkTime || Date.now()) - thinkStart) / 1000),
       );
+
+      const { actions: parsedActions, cleaned: cleanedContent } = parseTodoActions(targetContent);
+      let appliedTodoActions: TodoAction[] = [];
+
+      if (parsedActions.length > 0) {
+        setWorkspace((currentWs) => {
+          const res = applyTodoActions(
+            currentWs.todos || [],
+            parsedActions,
+            bot,
+            current.id,
+          );
+          appliedTodoActions = res.applied;
+          return {
+            ...currentWs,
+            todos: res.nextTodos,
+          };
+        });
+      }
+
       current = {
         ...current,
         messages: current.messages.map((m) =>
-          m.id === assistantId ? { ...m, thoughtSeconds } : m,
+          m.id === assistantId
+            ? {
+                ...m,
+                content: cleanedContent || targetContent,
+                thoughtSeconds,
+                ...(appliedTodoActions.length > 0 ? { todoActions: appliedTodoActions } : {}),
+              }
+            : m,
         ),
       };
       setStreamingMessageId(null);
@@ -1647,7 +1787,7 @@ export default function Home() {
   }
   const contextTokens = chat && bot
     ? estimateTokens(
-        buildContext(chat, bot, workspace.entries)
+        buildContext(chat, bot, workspace.entries, new Date(), workspace.todos || [])
           .messages.map((m) => {
             if (typeof m.content === "string") return m.content;
             if (Array.isArray(m.content)) {
@@ -2102,8 +2242,30 @@ export default function Home() {
           </header>
         )}
         {view === "chat" && bot ? (
-          <div className="chat-layout">
+          <div className={`chat-layout ${checklistOpen ? "checklist-open" : "checklist-closed"}`}>
             <section className="conversation">
+              <header className="chat-top-header">
+                <div className="chat-bot-info">
+                  <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
+                  <span className="chat-bot-name">{bot.name}</span>
+                  <span className="chat-model-badge">{bot.model.split("/").pop()}</span>
+                </div>
+                <div className="chat-header-actions">
+                  <button
+                    type="button"
+                    className={`checklist-toggle-btn ${checklistOpen ? "active" : ""}`}
+                    onClick={toggleChecklist}
+                    title={checklistOpen ? "Collapse checklist" : "Expand checklist"}
+                    aria-label={checklistOpen ? "Collapse checklist" : "Expand checklist"}
+                  >
+                    <ListTodo size={15} />
+                    <span className="checklist-toggle-label">Checklist</span>
+                    {pendingTodoCount > 0 && (
+                      <span className="checklist-badge">{pendingTodoCount}</span>
+                    )}
+                  </button>
+                </div>
+              </header>
               {chat?.messages.length ? (
                 <>
                   <div
@@ -2231,8 +2393,26 @@ export default function Home() {
                               {m.content && (
                                 <div className="markdown">
                                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {m.content}
+                                    {stripTodoActionTags(m.content)}
                                   </ReactMarkdown>
+                                </div>
+                              )}
+                              {m.todoActions && m.todoActions.length > 0 && (
+                                <div className="message-todo-badges">
+                                  {m.todoActions.map((act, i) => (
+                                    <div key={i} className={`todo-action-badge ${act.action}`}>
+                                      {act.action === "add" && <CheckCircle2 size={13} />}
+                                      {act.action === "complete" && <Check size={13} />}
+                                      {act.action === "update" && <Pencil size={13} />}
+                                      {act.action === "delete" && <Trash2 size={13} />}
+                                      <span>
+                                        {act.action === "add" && `Added to checklist: "${act.text}"`}
+                                        {act.action === "complete" && `Marked complete: "${act.text || act.id}"`}
+                                        {act.action === "update" && `Updated task: "${act.text}"`}
+                                        {act.action === "delete" && `Removed task: "${act.text || act.id}"`}
+                                      </span>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -2312,6 +2492,204 @@ export default function Home() {
                 </div>
               )}
             </section>
+            {checklistOpen && (
+              <div
+                className="checklist-backdrop"
+                onClick={() => setChecklistOpen(false)}
+                aria-label="Close checklist overlay"
+              />
+            )}
+            <aside
+              className={`checklist-pane ${checklistOpen ? "open" : "collapsed"}`}
+              aria-label="Action Checklist"
+            >
+              <div className="checklist-header">
+                <div className="checklist-title-wrap">
+                  <ListTodo size={16} className="checklist-icon" />
+                  <h3 className="checklist-title">Checklist</h3>
+                  <span className="checklist-count-chip">
+                    {completedTodoCount}/{totalTodoCount}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="checklist-close-btn"
+                  onClick={toggleChecklist}
+                  title="Collapse checklist"
+                  aria-label="Collapse checklist"
+                >
+                  <PanelRightClose size={16} />
+                </button>
+              </div>
+
+              <div className="checklist-progress-bar" title={`${progressPercent}% completed`}>
+                <div
+                  className="checklist-progress-fill"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+
+              <div className="checklist-filters">
+                <button
+                  type="button"
+                  className={`checklist-filter-tab ${checklistFilter === "all" ? "active" : ""}`}
+                  onClick={() => setChecklistFilter("all")}
+                >
+                  All ({totalTodoCount})
+                </button>
+                <button
+                  type="button"
+                  className={`checklist-filter-tab ${checklistFilter === "pending" ? "active" : ""}`}
+                  onClick={() => setChecklistFilter("pending")}
+                >
+                  Active ({pendingTodoCount})
+                </button>
+                <button
+                  type="button"
+                  className={`checklist-filter-tab ${checklistFilter === "completed" ? "active" : ""}`}
+                  onClick={() => setChecklistFilter("completed")}
+                >
+                  Done ({completedTodoCount})
+                </button>
+              </div>
+
+              <form
+                className="checklist-add-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAddTodo();
+                }}
+              >
+                <input
+                  type="text"
+                  className="checklist-add-input"
+                  placeholder="Add an action item..."
+                  value={newTodoInput}
+                  onChange={(e) => setNewTodoInput(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="checklist-add-btn"
+                  disabled={!newTodoInput.trim()}
+                  title="Add task"
+                  aria-label="Add task"
+                >
+                  <Plus size={14} />
+                </button>
+              </form>
+
+              <div className="checklist-items-scroll">
+                {filteredTodos.length === 0 ? (
+                  <div className="checklist-empty">
+                    <ListTodo size={26} />
+                    <p className="checklist-empty-title">
+                      {checklistFilter === "completed"
+                        ? "No completed tasks yet"
+                        : checklistFilter === "pending"
+                          ? "All caught up!"
+                          : "No action items yet"}
+                    </p>
+                    <span className="checklist-empty-hint">
+                      {checklistFilter === "all"
+                        ? "When your goal-oriented bots identify next steps, they'll add them here. You can also add tasks manually."
+                        : ""}
+                    </span>
+                  </div>
+                ) : (
+                  filteredTodos.map((todo) => {
+                    const isEditing = editingTodoId === todo.id;
+                    return (
+                      <div
+                        key={todo.id}
+                        className={`checklist-item ${todo.completed ? "completed" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="checklist-checkbox-btn"
+                          onClick={() => handleToggleTodo(todo.id)}
+                          title={todo.completed ? "Mark incomplete" : "Mark complete"}
+                          aria-label={todo.completed ? `Mark "${todo.text}" incomplete` : `Mark "${todo.text}" complete`}
+                        >
+                          {todo.completed ? (
+                            <CheckCircle2 size={16} />
+                          ) : (
+                            <Circle size={16} />
+                          )}
+                        </button>
+                        <div className="checklist-item-content">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              className="checklist-item-edit-input"
+                              value={editingTodoText}
+                              autoFocus
+                              onChange={(e) => setEditingTodoText(e.target.value)}
+                              onBlur={() => handleSaveEditTodo(todo.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveEditTodo(todo.id);
+                                if (e.key === "Escape") setEditingTodoId(null);
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className="checklist-item-text"
+                              onDoubleClick={() => handleStartEditTodo(todo)}
+                              title="Double click to edit"
+                            >
+                              {todo.text}
+                            </span>
+                          )}
+                          {todo.sourceBotName && (
+                            <span
+                              className="checklist-item-bot-tag"
+                              title={`Added by ${todo.sourceBotName}`}
+                            >
+                              <span className="bot-tag-dot" />
+                              {todo.sourceBotName}
+                            </span>
+                          )}
+                        </div>
+                        <div className="checklist-item-actions">
+                          <button
+                            type="button"
+                            className="checklist-action-icon-btn"
+                            onClick={() => handleStartEditTodo(todo)}
+                            title="Edit task"
+                            aria-label={`Edit "${todo.text}"`}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            className="checklist-action-icon-btn delete"
+                            onClick={() => handleDeleteTodo(todo.id)}
+                            title="Delete task"
+                            aria-label={`Delete "${todo.text}"`}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="checklist-footer">
+                {completedTodoCount > 0 ? (
+                  <button
+                    type="button"
+                    className="checklist-clear-btn"
+                    onClick={handleClearCompletedTodos}
+                  >
+                    Clear {completedTodoCount} completed
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <span className="checklist-footer-note">Shared across all chats</span>
+              </div>
+            </aside>
           </div>
         ) : (
           <section className="library">
