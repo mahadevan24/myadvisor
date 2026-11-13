@@ -275,11 +275,11 @@ export default function SpaceBackground() {
       // 1. Clear background and paint deep space void
       ctx.clearRect(0, 0, width, height);
 
-      // Deep space atmospheric base
+      // Deep space atmospheric base with cosmic space-blue depth
       const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-      bgGrad.addColorStop(0, "#05060a");
-      bgGrad.addColorStop(0.5, "#070913");
-      bgGrad.addColorStop(1, "#030408");
+      bgGrad.addColorStop(0, "#030712");
+      bgGrad.addColorStop(0.5, "#061026");
+      bgGrad.addColorStop(1, "#02050e");
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 

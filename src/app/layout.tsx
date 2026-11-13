@@ -6,8 +6,11 @@ export const metadata: Metadata = {
   title: "MyAdvisor — Your second mind",
   description: "Personal AI companions. Conversations that become knowledge.",
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/icon.svg?v=space-blue-5", type: "image/svg+xml" },
+    ],
+    shortcut: "/icon.svg?v=space-blue-5",
+    apple: "/icon.svg?v=space-blue-5",
   },
   appleWebApp: {
     capable: true,
@@ -22,7 +25,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: "#05060a",
+  themeColor: "#030712",
 };
 
 export default function RootLayout({
@@ -32,6 +35,9 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="icon" href="/icon.svg?v=space-blue-5" type="image/svg+xml" sizes="any" />
+        <link rel="shortcut icon" href="/icon.svg?v=space-blue-5" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon.svg?v=space-blue-5" />
       </head>
       <body>
         <SpaceBackground />
