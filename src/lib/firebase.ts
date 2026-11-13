@@ -136,7 +136,6 @@ export async function saveCloud(uid: string, workspace: Workspace, encryptionKey
   const encryptedPayload = await encryptWorkspace(sanitized, key);
 
   await setDoc(doc(db, "users", uid, "workspace", "main"), {
-    encrypted: true,
     data: encryptedPayload,
     updatedAt: Date.now(),
   });
