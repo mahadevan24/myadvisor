@@ -7,8 +7,6 @@ interface Star {
   y: number;
   size: number; // visual radius in px (distant pinpoint starlight)
   baseAlpha: number; // apparent luminosity
-  twinkleSpeed: number; // subtle scintillation rate
-  twinklePhase: number; // current phase
   color: string; // stellar spectrum color
   isAnchor: boolean; // navigational anchor star
   speedMultiplier: number; // celestial orbital drift speed factor
@@ -32,16 +30,6 @@ interface ShootingStar {
   maxAge: number;
 }
 
-interface DistantSatellite {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  blinkPhase: number;
-  blinkSpeed: number;
-  active: boolean;
-}
 
 interface MoonState {
   active: boolean;
@@ -135,19 +123,6 @@ export default function SpaceBackground() {
     let stars: Star[] = [];
     const shootingStars: ShootingStar[] = [];
     let nextShootingStarTime = performance.now() + 1500; // First shooting star soon after load
-
-    // Distant satellite / space station beacon
-    let satellite: DistantSatellite = {
-      x: -50,
-      y: 100,
-      vx: 0.35,
-      vy: 0.08,
-      size: 1.5,
-      blinkPhase: 0,
-      blinkSpeed: 0.05,
-      active: true,
-    };
-    let nextSatelliteSpawn = performance.now() + 8000;
 
     // Orbiting Moon
     const moonRadius = 46;
@@ -245,8 +220,6 @@ export default function SpaceBackground() {
           y,
           size,
           baseAlpha,
-          twinkleSpeed: 0.006 + Math.random() * 0.014,
-          twinklePhase: Math.random() * Math.PI * 2,
           color: colorBase,
           isAnchor,
           speedMultiplier,
@@ -354,19 +327,17 @@ export default function SpaceBackground() {
           continue;
         }
 
-        // Gentle, organic stellar scintillation (soft 16% breathing shimmer)
-        star.twinklePhase += star.twinkleSpeed * deltaFactor;
-        const twinkle = Math.sin(star.twinklePhase);
-        const currentAlpha = Math.max(0.12, Math.min(1, star.baseAlpha * (0.84 + twinkle * 0.16)));
+        // Steady, serene starlight without flickering or blinking
+        const currentAlpha = star.baseAlpha;
 
         ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Subtle starlight diffraction ring only for prominent anchor stars
-        if (star.isAnchor && currentAlpha > 0.72) {
-          ctx.fillStyle = `${star.color}${(currentAlpha * 0.12).toFixed(3)})`;
+        // Soft, steady starlight diffraction glow for prominent anchor stars
+        if (star.isAnchor) {
+          ctx.fillStyle = `${star.color}${(currentAlpha * 0.14).toFixed(3)})`;
           ctx.beginPath();
           ctx.arc(star.x, star.y, star.size * 1.8, 0, Math.PI * 2);
           ctx.fill();
@@ -410,43 +381,7 @@ export default function SpaceBackground() {
         moon.alpha = 0;
       }
 
-      // 5. Distant satellite orbiting with blinking beacon
-      if (satellite.active) {
-        satellite.x += satellite.vx * deltaFactor;
-        satellite.y += satellite.vy * deltaFactor;
-        satellite.blinkPhase += satellite.blinkSpeed * deltaFactor;
-
-        ctx.fillStyle = "rgba(220, 235, 255, 0.75)";
-        ctx.beginPath();
-        ctx.arc(satellite.x, satellite.y, satellite.size, 0, Math.PI * 2);
-        ctx.fill();
-
-        const beaconIntensity = Math.pow(Math.sin(satellite.blinkPhase), 6);
-        if (beaconIntensity > 0.4) {
-          ctx.fillStyle = `rgba(204, 120, 92, ${(beaconIntensity * 0.9).toFixed(2)})`;
-          ctx.beginPath();
-          ctx.arc(satellite.x, satellite.y, satellite.size * 2.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (satellite.x > width + 50 || satellite.y > height + 50) {
-          satellite.active = false;
-          nextSatelliteSpawn = currentTime + 22000 + Math.random() * 25000;
-        }
-      } else if (currentTime > nextSatelliteSpawn) {
-        satellite = {
-          x: -30,
-          y: Math.random() * (height * 0.6) + 30,
-          vx: 0.3 + Math.random() * 0.2,
-          vy: 0.05 + Math.random() * 0.1,
-          size: 1.2 + Math.random() * 0.6,
-          blinkPhase: 0,
-          blinkSpeed: 0.06 + Math.random() * 0.04,
-          active: true,
-        };
-      }
-
-      // 6. Periodic Shooting Stars / Falling Stars
+      // 5. Periodic Shooting Stars / Falling Stars
       if (currentTime > nextShootingStarTime) {
         shootingStars.push(createShootingStar());
         nextShootingStarTime = currentTime + 3500 + Math.random() * 4000;
