@@ -4,7 +4,6 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   ArrowUpRight,
-  AudioLines,
   BookOpen,
   Check,
   CheckCircle2,
@@ -2581,12 +2580,6 @@ export default function Home() {
       )}
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`} suppressHydrationWarning>
         <div className="sidebar-top">
-          <a className="brand" href="/" aria-label="MyAdvisor home" onClick={closeSidebarOnMobile}>
-            <span className="brand-icon">
-              <AudioLines size={22} />
-            </span>
-            myadvisor<span className="brand-dot">®</span>
-          </a>
           <button
             type="button"
             className="sidebar-toggle-btn"
@@ -2607,7 +2600,7 @@ export default function Home() {
           aria-label="Start new chat"
         >
           <span className="new-chat-icon" aria-hidden="true">
-            <Plus size={15} />
+            <Plus size={17} />
           </span>
           <span className="new-chat-label">Start new chat</span>
           <kbd>⌘ K</kbd>
