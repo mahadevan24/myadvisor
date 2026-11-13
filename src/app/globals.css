@@ -3634,11 +3634,52 @@ button:hover:not(:disabled) {
 /* Quick add form */
 .checklist-add-form {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 14px;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.08);
+}
+.checklist-add-main-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.checklist-add-meta-row,
+.checklist-item-edit-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.checklist-meta-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #090f1d;
+  border: 1px solid #1a2c4e;
+  border-radius: 5px;
+  padding: 3px 6px;
+  flex: 1;
+  min-width: 0;
+}
+.checklist-meta-field:focus-within {
+  border-color: var(--accent);
+}
+.checklist-meta-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.checklist-meta-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 10.5px;
+  color: var(--text);
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  font-family: inherit;
+  color-scheme: dark;
 }
 .checklist-add-input {
   flex: 1;
@@ -3706,6 +3747,10 @@ button:hover:not(:disabled) {
   background: #12203a;
   border-color: rgba(59, 130, 246, 0.35);
 }
+.checklist-item.is-overdue {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.04);
+}
 .checklist-item.completed {
   opacity: 0.6;
   background: rgba(10, 18, 36, 0.55);
@@ -3738,6 +3783,27 @@ button:hover:not(:disabled) {
   flex-direction: column;
   gap: 3px;
 }
+.checklist-item-edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.checklist-edit-save-btn {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+.checklist-edit-save-btn:hover {
+  opacity: 0.9;
+}
 .checklist-item-text {
   font-size: 12.5px;
   line-height: 1.45;
@@ -3748,6 +3814,49 @@ button:hover:not(:disabled) {
 .checklist-item.completed .checklist-item-text {
   text-decoration: line-through;
   color: var(--muted);
+}
+.checklist-item-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+.checklist-item-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  font-size: 9.5px;
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 1.5px 5.5px;
+  width: fit-content;
+}
+.checklist-item-due.expired {
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.checklist-item-due.due-today {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.checklist-item-due.due-tomorrow {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+.checklist-item-due.upcoming {
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.checklist-item-due.completed {
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  text-decoration: none;
 }
 .checklist-item-edit-input {
   width: 100%;

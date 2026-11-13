@@ -2,14 +2,17 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
   ArrowUp,
   ArrowUpRight,
   BookOpen,
+  Calendar,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Circle,
+  Clock,
   Copy,
   Download,
   ExternalLink,
@@ -63,8 +66,12 @@ import {
   buildTitlePrompt,
   chunkDocument,
   cleanTitle,
+  computeExpiresAt,
   deriveFallbackTitle,
   estimateTokens,
+  formatLocalDate,
+  formatLocalTime,
+  getTodoDueStatus,
   initialWorkspace,
   isChecklistSupportedBot,
   isCuratedBot,
@@ -329,7 +336,22 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
           ? { ...b, model: "google/gemini-flash-latest" }
           : b
       );
-      data.todos = Array.isArray(data.todos) ? data.todos : [];
+      data.todos = Array.isArray(data.todos)
+        ? data.todos.map((t: any) => {
+            if (!t.dueDate && !t.dueTime) {
+              const d = new Date(t.createdAt || Date.now());
+              const dueDate = formatLocalDate(d);
+              const dueTime = "23:59";
+              return {
+                ...t,
+                dueDate,
+                dueTime,
+                expiresAt: t.expiresAt || computeExpiresAt(dueDate, dueTime, d),
+              };
+            }
+            return t;
+          })
+        : [];
       data.files = Array.isArray(data.files) ? data.files : [];
       if (!data.defaultBotId || data.defaultBotId === "nova") {
         const candidate = localStorage.getItem("myadvisor.defaultBotId");
@@ -818,21 +840,31 @@ export default function Home() {
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistFilter, setChecklistFilter] = useState<"all" | "pending" | "completed">("all");
   const [newTodoInput, setNewTodoInput] = useState("");
+  const [newTodoDate, setNewTodoDate] = useState(() => formatLocalDate(new Date()));
+  const [newTodoTime, setNewTodoTime] = useState("23:59");
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editingTodoText, setEditingTodoText] = useState("");
+  const [editingTodoDate, setEditingTodoDate] = useState("");
+  const [editingTodoTime, setEditingTodoTime] = useState("");
 
   function toggleChecklist() {
     setChecklistOpen((prev) => !prev);
   }
 
-  function handleAddTodo(text = newTodoInput) {
+  function handleAddTodo(text = newTodoInput, date = newTodoDate, time = newTodoTime) {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const dueDate = date || formatLocalDate(new Date());
+    const dueTime = time || "23:59";
+    const expiresAt = computeExpiresAt(dueDate, dueTime, new Date());
     const newTodo: Todo = {
       id: `todo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       text: trimmed,
       completed: false,
       createdAt: Date.now(),
+      dueDate,
+      dueTime,
+      expiresAt,
     };
     setWorkspace((w) => ({
       ...w,
@@ -859,20 +891,35 @@ export default function Home() {
   function handleStartEditTodo(todo: Todo) {
     setEditingTodoId(todo.id);
     setEditingTodoText(todo.text);
+    setEditingTodoDate(todo.dueDate || formatLocalDate(new Date(todo.expiresAt || Date.now())));
+    setEditingTodoTime(todo.dueTime || "23:59");
   }
 
   function handleSaveEditTodo(id: string) {
     const trimmed = editingTodoText.trim();
     if (trimmed) {
+      const dueDate = editingTodoDate || formatLocalDate(new Date());
+      const dueTime = editingTodoTime || "23:59";
+      const expiresAt = computeExpiresAt(dueDate, dueTime, new Date());
       setWorkspace((w) => ({
         ...w,
         todos: (w.todos || []).map((t) =>
-          t.id === id ? { ...t, text: trimmed } : t,
+          t.id === id
+            ? {
+                ...t,
+                text: trimmed,
+                dueDate,
+                dueTime,
+                expiresAt,
+              }
+            : t,
         ),
       }));
     }
     setEditingTodoId(null);
     setEditingTodoText("");
+    setEditingTodoDate("");
+    setEditingTodoTime("");
   }
 
   function handleDeleteTodo(id: string) {
@@ -1951,6 +1998,7 @@ export default function Home() {
             parsedActions,
             bot,
             current.id,
+            new Date(),
           );
           appliedTodoActions = res.applied;
           return {
@@ -2933,9 +2981,9 @@ export default function Home() {
                                       {act.action === "update" && <Pencil size={13} />}
                                       {act.action === "delete" && <Trash2 size={13} />}
                                       <span>
-                                        {act.action === "add" && `Added to checklist: "${act.text}"`}
+                                        {act.action === "add" && `Added to checklist: "${act.text}"${act.dueDate ? ` (Due: ${act.dueDate}${act.dueTime ? ` ${act.dueTime}` : ""})` : ""}`}
                                         {act.action === "complete" && `Marked complete: "${act.text || act.id}"`}
-                                        {act.action === "update" && `Updated task: "${act.text}"`}
+                                        {act.action === "update" && `Updated task: "${act.text}"${act.dueDate ? ` (Due: ${act.dueDate}${act.dueTime ? ` ${act.dueTime}` : ""})` : ""}`}
                                         {act.action === "delete" && `Removed task: "${act.text || act.id}"`}
                                       </span>
                                     </div>
@@ -3104,22 +3152,46 @@ export default function Home() {
                   handleAddTodo();
                 }}
               >
-                <input
-                  type="text"
-                  className="checklist-add-input"
-                  placeholder="Add a task..."
-                  value={newTodoInput}
-                  onChange={(e) => setNewTodoInput(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  className="checklist-add-btn"
-                  disabled={!newTodoInput.trim()}
-                  title="Add task"
-                  aria-label="Add task"
-                >
-                  <Plus size={14} />
-                </button>
+                <div className="checklist-add-main-row">
+                  <input
+                    type="text"
+                    className="checklist-add-input"
+                    placeholder="Add a task..."
+                    value={newTodoInput}
+                    onChange={(e) => setNewTodoInput(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="checklist-add-btn"
+                    disabled={!newTodoInput.trim()}
+                    title="Add task"
+                    aria-label="Add task"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+                <div className="checklist-add-meta-row">
+                  <div className="checklist-meta-field" title="Expiry date">
+                    <Calendar size={11} className="checklist-meta-icon" />
+                    <input
+                      type="date"
+                      className="checklist-meta-input checklist-date-input"
+                      value={newTodoDate}
+                      onChange={(e) => setNewTodoDate(e.target.value)}
+                      title="Expiry date"
+                    />
+                  </div>
+                  <div className="checklist-meta-field" title="Expiry time">
+                    <Clock size={11} className="checklist-meta-icon" />
+                    <input
+                      type="time"
+                      className="checklist-meta-input checklist-time-input"
+                      value={newTodoTime}
+                      onChange={(e) => setNewTodoTime(e.target.value)}
+                      title="Expiry time"
+                    />
+                  </div>
+                </div>
               </form>
 
               <div className="checklist-items-scroll">
@@ -3142,10 +3214,11 @@ export default function Home() {
                 ) : (
                   filteredTodos.map((todo) => {
                     const isEditing = editingTodoId === todo.id;
+                    const dueInfo = getTodoDueStatus(todo);
                     return (
                       <div
                         key={todo.id}
-                        className={`checklist-item ${todo.completed ? "completed" : ""}`}
+                        className={`checklist-item ${todo.completed ? "completed" : ""} ${dueInfo.isOverdue ? "is-overdue" : ""}`}
                       >
                         <button
                           type="button"
@@ -3162,35 +3235,80 @@ export default function Home() {
                         </button>
                         <div className="checklist-item-content">
                           {isEditing ? (
-                            <input
-                              type="text"
-                              className="checklist-item-edit-input"
-                              value={editingTodoText}
-                              autoFocus
-                              onChange={(e) => setEditingTodoText(e.target.value)}
-                              onBlur={() => handleSaveEditTodo(todo.id)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSaveEditTodo(todo.id);
-                                if (e.key === "Escape") setEditingTodoId(null);
-                              }}
-                            />
+                            <div className="checklist-item-edit-box">
+                              <input
+                                type="text"
+                                className="checklist-item-edit-input"
+                                value={editingTodoText}
+                                autoFocus
+                                onChange={(e) => setEditingTodoText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleSaveEditTodo(todo.id);
+                                  if (e.key === "Escape") setEditingTodoId(null);
+                                }}
+                              />
+                              <div className="checklist-item-edit-meta-row">
+                                <div className="checklist-meta-field">
+                                  <Calendar size={11} className="checklist-meta-icon" />
+                                  <input
+                                    type="date"
+                                    className="checklist-meta-input"
+                                    value={editingTodoDate}
+                                    onChange={(e) => setEditingTodoDate(e.target.value)}
+                                    title="Edit expiry date"
+                                  />
+                                </div>
+                                <div className="checklist-meta-field">
+                                  <Clock size={11} className="checklist-meta-icon" />
+                                  <input
+                                    type="time"
+                                    className="checklist-meta-input"
+                                    value={editingTodoTime}
+                                    onChange={(e) => setEditingTodoTime(e.target.value)}
+                                    title="Edit expiry time"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  className="checklist-edit-save-btn"
+                                  onClick={() => handleSaveEditTodo(todo.id)}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
                           ) : (
-                            <span
-                              className="checklist-item-text"
-                              onDoubleClick={() => handleStartEditTodo(todo)}
-                              title="Double click to edit"
-                            >
-                              {todo.text}
-                            </span>
-                          )}
-                          {todo.sourceBotName && (
-                            <span
-                              className="checklist-item-bot-tag"
-                              title={`Added by ${todo.sourceBotName}`}
-                            >
-                              <span className="bot-tag-dot" />
-                              {todo.sourceBotName}
-                            </span>
+                            <>
+                              <span
+                                className="checklist-item-text"
+                                onDoubleClick={() => handleStartEditTodo(todo)}
+                                title="Double click to edit"
+                              >
+                                {todo.text}
+                              </span>
+                              <div className="checklist-item-meta-row">
+                                <span
+                                  className={`checklist-item-due ${dueInfo.status}`}
+                                  title={`Deadline: ${dueInfo.dueDate} ${dueInfo.dueTime}`}
+                                >
+                                  {dueInfo.isOverdue ? (
+                                    <AlertCircle size={10} />
+                                  ) : (
+                                    <Clock size={10} />
+                                  )}
+                                  <span>{dueInfo.label}</span>
+                                </span>
+                                {todo.sourceBotName && (
+                                  <span
+                                    className="checklist-item-bot-tag"
+                                    title={`Added by ${todo.sourceBotName}`}
+                                  >
+                                    <span className="bot-tag-dot" />
+                                    {todo.sourceBotName}
+                                  </span>
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                         <div className="checklist-item-actions">

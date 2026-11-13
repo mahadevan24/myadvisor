@@ -54,6 +54,9 @@ export type Todo = {
   completed: boolean;
   createdAt: number;
   completedAt?: number;
+  dueDate?: string;
+  dueTime?: string;
+  expiresAt?: number;
   sourceBotId?: string;
   sourceBotName?: string;
   sourceChatId?: string;
@@ -62,6 +65,9 @@ export type TodoAction = {
   action: "add" | "complete" | "update" | "delete";
   id?: string;
   text?: string;
+  dueDate?: string;
+  dueTime?: string;
+  expiresAt?: number;
 };
 export type RagDocument = {
   id: string;
@@ -425,33 +431,232 @@ export function needsCompaction(chat: Chat) {
     uncompacted.length > 4
   );
 }
-export function formatTodosContext(todos: Todo[] = []): string {
+export function formatLocalDate(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function formatLocalTime(d: Date = new Date()): string {
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+export function computeExpiresAt(
+  dueDate?: string,
+  dueTime?: string,
+  fallbackBase: Date = new Date(),
+): number {
+  if (dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    const [y, m, d] = dueDate.split("-").map(Number);
+    let hours = 23;
+    let minutes = 59;
+    if (dueTime && /^\d{1,2}:\d{2}$/.test(dueTime)) {
+      const [h, min] = dueTime.split(":").map(Number);
+      hours = Math.min(23, Math.max(0, h));
+      minutes = Math.min(59, Math.max(0, min));
+    }
+    const parsed = new Date(y, m - 1, d, hours, minutes, 59, 999);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.getTime();
+    }
+  }
+  const fallback = new Date(fallbackBase);
+  fallback.setHours(23, 59, 59, 999);
+  return fallback.getTime();
+}
+
+export function getTodoDueStatus(
+  t: Todo,
+  now: Date = new Date(),
+): {
+  status: "expired" | "due-today" | "due-tomorrow" | "upcoming" | "completed";
+  label: string;
+  isOverdue: boolean;
+  dueDate: string;
+  dueTime: string;
+  expiresAt: number;
+} {
+  let dueDate = t.dueDate;
+  let dueTime = t.dueTime;
+  let expiresAt = t.expiresAt;
+
+  if (!dueDate && expiresAt) {
+    const exp = new Date(expiresAt);
+    dueDate = formatLocalDate(exp);
+    dueTime = dueTime || formatLocalTime(exp);
+  } else if (!dueDate) {
+    dueDate = formatLocalDate(now);
+    dueTime = dueTime || "23:59";
+  }
+
+  if (!dueTime) {
+    dueTime = "23:59";
+  }
+
+  if (!expiresAt) {
+    expiresAt = computeExpiresAt(dueDate, dueTime, now);
+  }
+
+  if (t.completed) {
+    return {
+      status: "completed",
+      label: `Completed (was due ${dueDate}${dueTime ? ` at ${dueTime}` : ""})`,
+      isOverdue: false,
+      dueDate,
+      dueTime,
+      expiresAt,
+    };
+  }
+
+  const [y, m, d] = dueDate.split("-").map(Number);
+  const nowDateMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dueDateMidnight = new Date(y, m - 1, d).getTime();
+  const diffDays = Math.round((dueDateMidnight - nowDateMidnight) / (24 * 3600 * 1000));
+  const isPastTime = expiresAt < now.getTime();
+
+  if (diffDays < -1) {
+    return {
+      status: "expired",
+      label: `Expired on ${dueDate} at ${dueTime}`,
+      isOverdue: true,
+      dueDate,
+      dueTime,
+      expiresAt,
+    };
+  }
+  if (diffDays === -1) {
+    return {
+      status: "expired",
+      label: `Expired yesterday at ${dueTime}`,
+      isOverdue: true,
+      dueDate,
+      dueTime,
+      expiresAt,
+    };
+  }
+  if (diffDays === 0) {
+    if (isPastTime) {
+      return {
+        status: "expired",
+        label: `Expired today at ${dueTime}`,
+        isOverdue: true,
+        dueDate,
+        dueTime,
+        expiresAt,
+      };
+    }
+    return {
+      status: "due-today",
+      label: `Due today at ${dueTime}`,
+      isOverdue: false,
+      dueDate,
+      dueTime,
+      expiresAt,
+    };
+  }
+  if (diffDays === 1) {
+    return {
+      status: "due-tomorrow",
+      label: `Due tomorrow at ${dueTime}`,
+      isOverdue: false,
+      dueDate,
+      dueTime,
+      expiresAt,
+    };
+  }
+  return {
+    status: "upcoming",
+    label: `Due ${dueDate} at ${dueTime}`,
+    isOverdue: false,
+    dueDate,
+    dueTime,
+    expiresAt,
+  };
+}
+
+export function formatTodosContext(todos: Todo[] = [], now: Date = new Date()): string {
   if (!todos || todos.length === 0) {
     return "CURRENT USER CHECKLIST / TODOS:\n(No action items currently on the checklist.)";
   }
+
+  const overdueOrExpired: string[] = [];
+  const dueToday: string[] = [];
+
+  for (const t of todos) {
+    if (t.completed) continue;
+    const dueInfo = getTodoDueStatus(t, now);
+    if (dueInfo.isOverdue) {
+      overdueOrExpired.push(
+        `- (id: "${t.id}") "${t.text}" [${dueInfo.label.toUpperCase()}]${t.sourceBotName ? ` (set by ${t.sourceBotName})` : ""}`,
+      );
+    } else if (dueInfo.status === "due-today") {
+      dueToday.push(
+        `- (id: "${t.id}") "${t.text}" [${dueInfo.label.toUpperCase()}]${t.sourceBotName ? ` (set by ${t.sourceBotName})` : ""}`,
+      );
+    }
+  }
+
+  let alertSection = "";
+  if (overdueOrExpired.length > 0) {
+    alertSection += `\n[OVERDUE / EXPIRED TASKS - QUESTION USER IMMEDIATELY]:
+The following tasks are PAST THEIR EXPIRY DATE/TIME or EXPIRED YESTERDAY without completion. You must directly confront and question the user about why these were not done, whether they finished them, or if deadlines must be updated:
+${overdueOrExpired.join("\n")}\n`;
+  }
+  if (dueToday.length > 0) {
+    alertSection += `\n[TASKS DUE TODAY]:
+The following tasks expire TODAY. Prompt and question the user on their concrete execution plan:
+${dueToday.join("\n")}\n`;
+  }
+
   const lines = todos.map((t) => {
     const status = t.completed ? "[COMPLETED]" : "[PENDING]";
     const check = t.completed ? "x" : " ";
     const botNote = t.sourceBotName ? ` (from ${t.sourceBotName})` : "";
-    return `- [${check}] (id: "${t.id}") ${t.text}${botNote} ${status}`;
+    let deadlineStr = "";
+    if (t.dueDate || t.dueTime || t.expiresAt) {
+      const dueInfo = getTodoDueStatus(t, now);
+      deadlineStr = ` (Due: ${dueInfo.dueDate}${dueInfo.dueTime ? ` ${dueInfo.dueTime}` : ""} - ${dueInfo.label})`;
+    }
+    return `- [${check}] (id: "${t.id}") ${t.text}${botNote} ${status}${deadlineStr}`;
   });
-  return `CURRENT USER CHECKLIST / TODOS:\n${lines.join("\n")}`;
+
+  return `CURRENT USER CHECKLIST / TODOS:${alertSection}\n${lines.join("\n")}`;
 }
 
 export function getTodoInstructions(bot?: Bot): string {
   return `CHECKLIST / TODO MANAGEMENT INTEGRATION:
 You have direct integration with the user's checklist pane displayed beside the chat.
 The user's current checklist items and their completion statuses are listed above.
+Each todo item in the checklist has an assigned expiry date and time.
 
-You can manage the user's checklist by outputting action tags anywhere in your response:
-- Add a new task: <todo_action action="add" text="Specific actionable task description" />
-- Mark a task complete: <todo_action action="complete" id="todo_id" /> (or text="task text snippet")
-- Update a task: <todo_action action="update" id="todo_id" text="Updated description" />
-- Delete a task: <todo_action action="delete" id="todo_id" />
+QUESTIONING AND ACCOUNTABILITY ON DUE/EXPIRED TODOS:
+When conversing with the user, especially on a new day, after midnight, or during daily check-ins:
+1. Review the user's checklist above for any tasks that expired yesterday, are past due, or are due today.
+2. You MUST actively question and confront the user about these items:
+   - If a task was due yesterday or is overdue, ask why it was not completed, whether they actually finished it, or what blocked them.
+   - Hold them strictly accountable to their deadlines without accepting easy excuses.
+   - If they confirm they finished it, immediately mark it complete using <todo_action action="complete" id="..." />.
+   - If they need to reschedule or change the deadline, update the task using <todo_action action="update" id="..." dueDate="YYYY-MM-DD" dueTime="HH:mm" />.
+
+REAL-TIME CONVERSATIONAL CHECKLIST UPDATES (ANY TIME OF DAY):
+Throughout your conversation at ANY time of day, dynamically keep the checklist accurate based on what the user says:
+- When the user mentions finishing, completing, or shipping a task: output <todo_action action="complete" id="todo_id" /> (or text="task text snippet").
+- When new goals, action items, or commitments are discussed: output <todo_action action="add" text="Specific task description" dueDate="YYYY-MM-DD" dueTime="HH:mm" />. Always provide an explicit expiry date and time (anchor relative deadlines like 'tomorrow at 5pm' or 'by tonight' to CURRENT DATE & TIME).
+- When a task's scope or deadline changes: output <todo_action action="update" id="todo_id" text="Updated description" dueDate="YYYY-MM-DD" dueTime="HH:mm" />.
+- When a task is canceled or dropped: output <todo_action action="delete" id="todo_id" />.
+
+ACTION TAG FORMATS:
+- Add: <todo_action action="add" text="Task description" dueDate="YYYY-MM-DD" dueTime="HH:mm" />
+- Complete: <todo_action action="complete" id="todo_id" /> (or text="task text snippet")
+- Update: <todo_action action="update" id="todo_id" text="Updated description" dueDate="YYYY-MM-DD" dueTime="HH:mm" />
+- Delete: <todo_action action="delete" id="todo_id" />
 
 CRITICAL GUIDELINES ON WHEN TO USE CHECKLIST ACTIONS:
 1. ONLY add or modify checklist items when necessary, high-impact, and directly appropriate for your persona and the conversation context:
-   - Action-oriented, execution-driven, goal-focused, engineering, or coaching personas (such as Elon Musk, Steve Jobs, founders, fitness coaches, productivity mentors): when discussing goals, projects, milestones, execution plans, or concrete commitments, actively identify high-leverage next steps and add them to the checklist.
+   - Action-oriented, execution-driven, goal-focused, engineering, or coaching personas (such as Elon Musk, Steve Jobs, founders, fitness coaches, productivity mentors): when discussing goals, projects, milestones, execution plans, or concrete commitments, actively identify high-leverage next steps and add them to the checklist with deadlines.
    - Contemplative, spiritual, philosophical, mindfulness, or reflective personas (such as Osho, Eckhart Tolle, Alan Watts, or casual conversational companions): do NOT add todos or create task lists during normal conversation, as mechanical task-doing and future fixation oppose living in presence and total awareness. Only manage todos if the user explicitly asks you to set an action item.
    - For all bots: Never spam trivial tasks. Only add items when a clear, meaningful action or milestone is identified that the user needs to execute.
 2. If the user marks a task complete in their checklist, it appears as [COMPLETED] with [x] in CURRENT USER CHECKLIST above. You will know they completed it—acknowledge and celebrate real progress or build upon it when relevant.
@@ -485,27 +690,51 @@ export function parseTodoActions(raw: string): { actions: TodoAction[]; cleaned:
         try {
           const parsed = JSON.parse(innerContent.trim());
           if (parsed.action) {
-            actions.push({
+            const act: TodoAction = {
               action: parsed.action.toLowerCase().trim() as TodoAction["action"],
               id: parsed.id ? String(parsed.id).trim() : undefined,
               text: parsed.text || parsed.task || parsed.title ? String(parsed.text || parsed.task || parsed.title).trim() : undefined,
-            });
+              dueDate: parsed.dueDate || parsed.due_date || parsed.expiryDate || parsed.date ? String(parsed.dueDate || parsed.due_date || parsed.expiryDate || parsed.date).trim() : undefined,
+              dueTime: parsed.dueTime || parsed.due_time || parsed.expiryTime || parsed.time ? String(parsed.dueTime || parsed.due_time || parsed.expiryTime || parsed.time).trim() : undefined,
+              expiresAt: parsed.expiresAt || parsed.expires_at ? Number(parsed.expiresAt || parsed.expires_at) : undefined,
+            };
+            if (parsed.due && typeof parsed.due === "string") {
+              const dueParts = parsed.due.trim().split(/[T\s]+/);
+              if (dueParts[0] && /^\d{4}-\d{2}-\d{2}$/.test(dueParts[0])) act.dueDate = dueParts[0];
+              if (dueParts[1] && /^\d{1,2}:\d{2}/.test(dueParts[1])) act.dueTime = dueParts[1].slice(0, 5);
+            }
+            actions.push(act);
             return "";
           }
         } catch {}
       }
 
-      const actionMatch = attrs.match(/action=["']([^"']+)["']/i);
-      const idMatch = attrs.match(/id=["']([^"']+)["']/i);
-      const textMatch = attrs.match(/text=["']([^"']+)["']/i);
+      const actionMatch = attrs.match(/\baction=["']([^"']+)["']/i);
+      const idMatch = attrs.match(/\bid=["']([^"']+)["']/i);
+      const textMatch = attrs.match(/\btext=["']([^"']*)["']/i);
+      const dueDateMatch = attrs.match(/\b(?:dueDate|due_date|expiryDate|expiry_date|date)=["']([0-9]{4}-[0-9]{2}-[0-9]{2})["']/i);
+      const dueTimeMatch = attrs.match(/\b(?:dueTime|due_time|expiryTime|expiry_time|time)=["']([0-9]{1,2}:[0-9]{2})["']/i);
+      const dueMatch = attrs.match(/\bdue=["']([0-9]{4}-[0-9]{2}-[0-9]{2})[T\s]+([0-9]{1,2}:[0-9]{2})["']/i);
+      const expiresAtMatch = attrs.match(/\b(?:expiresAt|expires_at)=["']([0-9]+)["']/i);
 
       if (actionMatch) {
         const action = actionMatch[1].toLowerCase().trim() as TodoAction["action"];
         if (["add", "complete", "update", "delete"].includes(action)) {
+          let dueDate = dueDateMatch ? dueDateMatch[1].trim() : undefined;
+          let dueTime = dueTimeMatch ? dueTimeMatch[1].trim() : undefined;
+          if (dueMatch) {
+            dueDate = dueDate || dueMatch[1].trim();
+            dueTime = dueTime || dueMatch[2].trim();
+          }
+          const expiresAt = expiresAtMatch ? Number(expiresAtMatch[1]) : undefined;
+
           actions.push({
             action,
             id: idMatch ? idMatch[1].trim() : undefined,
             text: textMatch ? textMatch[1].trim() : (innerContent?.trim() || undefined),
+            dueDate,
+            dueTime,
+            expiresAt,
           });
           return "";
         }
@@ -524,11 +753,20 @@ export function parseTodoActions(raw: string): { actions: TodoAction[]; cleaned:
         const list = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of list) {
           if (item && item.action) {
-            actions.push({
+            const act: TodoAction = {
               action: String(item.action).toLowerCase().trim() as TodoAction["action"],
               id: item.id ? String(item.id).trim() : undefined,
               text: item.text || item.task || item.title ? String(item.text || item.task || item.title).trim() : undefined,
-            });
+              dueDate: item.dueDate || item.due_date || item.expiryDate || item.date ? String(item.dueDate || item.due_date || item.expiryDate || item.date).trim() : undefined,
+              dueTime: item.dueTime || item.due_time || item.expiryTime || item.time ? String(item.dueTime || item.due_time || item.expiryTime || item.time).trim() : undefined,
+              expiresAt: item.expiresAt || item.expires_at ? Number(item.expiresAt || item.expires_at) : undefined,
+            };
+            if (item.due && typeof item.due === "string") {
+              const dueParts = item.due.trim().split(/[T\s]+/);
+              if (dueParts[0] && /^\d{4}-\d{2}-\d{2}$/.test(dueParts[0])) act.dueDate = dueParts[0];
+              if (dueParts[1] && /^\d{1,2}:\d{2}/.test(dueParts[1])) act.dueTime = dueParts[1].slice(0, 5);
+            }
+            actions.push(act);
           }
         }
         return "";
@@ -536,6 +774,8 @@ export function parseTodoActions(raw: string): { actions: TodoAction[]; cleaned:
         const actionM = trimmed.match(/action\s*[:=]\s*([a-zA-Z]+)/i);
         const textM = trimmed.match(/text\s*[:=]\s*(.+)$/im);
         const idM = trimmed.match(/id\s*[:=]\s*([^\s|]+)/i);
+        const dueDateM = trimmed.match(/(?:dueDate|due_date|date)\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        const dueTimeM = trimmed.match(/(?:dueTime|due_time|time)\s*[:=]\s*([0-9]{1,2}:[0-9]{2})/i);
         if (actionM) {
           const action = actionM[1].toLowerCase().trim() as TodoAction["action"];
           if (["add", "complete", "update", "delete"].includes(action)) {
@@ -543,6 +783,8 @@ export function parseTodoActions(raw: string): { actions: TodoAction[]; cleaned:
               action,
               id: idM ? idM[1].trim() : undefined,
               text: textM ? textM[1].trim().replace(/^["']|["']$/g, "") : undefined,
+              dueDate: dueDateM ? dueDateM[1].trim() : undefined,
+              dueTime: dueTimeM ? dueTimeM[1].trim() : undefined,
             });
             return "";
           }
@@ -561,6 +803,7 @@ export function applyTodoActions(
   actions: TodoAction[],
   bot?: { id: string; name: string },
   chatId?: string,
+  now: Date = new Date(),
 ): { nextTodos: Todo[]; applied: TodoAction[] } {
   let list = [...todos];
   const applied: TodoAction[] = [];
@@ -572,6 +815,9 @@ export function applyTodoActions(
         (t) => !t.completed && t.text.toLowerCase() === cleanText.toLowerCase(),
       );
       if (!existing) {
+        const dueDate = act.dueDate || formatLocalDate(now);
+        const dueTime = act.dueTime || "23:59";
+        const expiresAt = act.expiresAt || computeExpiresAt(dueDate, dueTime, now);
         const newTodo: Todo = {
           id: act.id && !list.some((t) => t.id === act.id)
             ? act.id
@@ -579,12 +825,22 @@ export function applyTodoActions(
           text: cleanText,
           completed: false,
           createdAt: Date.now(),
+          dueDate,
+          dueTime,
+          expiresAt,
           sourceBotId: bot?.id,
           sourceBotName: bot?.name,
           sourceChatId: chatId,
         };
         list.unshift(newTodo);
-        applied.push({ ...act, id: newTodo.id, text: cleanText });
+        applied.push({
+          ...act,
+          id: newTodo.id,
+          text: cleanText,
+          dueDate,
+          dueTime,
+          expiresAt,
+        });
       }
     } else if (act.action === "complete") {
       let targetIndex = -1;
@@ -607,9 +863,12 @@ export function applyTodoActions(
           action: "complete",
           id: list[targetIndex].id,
           text: list[targetIndex].text,
+          dueDate: list[targetIndex].dueDate,
+          dueTime: list[targetIndex].dueTime,
+          expiresAt: list[targetIndex].expiresAt,
         });
       }
-    } else if (act.action === "update" && act.text?.trim()) {
+    } else if (act.action === "update") {
       let targetIndex = -1;
       if (act.id) {
         targetIndex = list.findIndex((t) => t.id === act.id);
@@ -619,14 +878,30 @@ export function applyTodoActions(
         targetIndex = list.findIndex((t) => t.text.toLowerCase().includes(needle));
       }
       if (targetIndex !== -1) {
+        const current = list[targetIndex];
+        const nextText = act.text?.trim() ? act.text.trim() : current.text;
+        const nextDueDate = act.dueDate ? act.dueDate : current.dueDate;
+        const nextDueTime = act.dueTime ? act.dueTime : current.dueTime;
+        const nextExpiresAt = act.expiresAt
+          ? act.expiresAt
+          : (act.dueDate || act.dueTime)
+            ? computeExpiresAt(nextDueDate, nextDueTime, now)
+            : current.expiresAt;
+
         list[targetIndex] = {
-          ...list[targetIndex],
-          text: act.text.trim(),
+          ...current,
+          text: nextText,
+          dueDate: nextDueDate,
+          dueTime: nextDueTime,
+          expiresAt: nextExpiresAt,
         };
         applied.push({
           action: "update",
           id: list[targetIndex].id,
           text: list[targetIndex].text,
+          dueDate: nextDueDate,
+          dueTime: nextDueTime,
+          expiresAt: nextExpiresAt,
         });
       }
     } else if (act.action === "delete") {
@@ -772,7 +1047,7 @@ export function buildContext(
   const temporalContext = `CURRENT DATE & TIME: Today is ${dateStr}, ${timeStr} (${timeZone}). Current year: ${now.getFullYear()}. Always anchor your temporal understanding, relative dates, and current year calculations to this date.`;
   const greetingInstruction = getGreetingInstruction(bot);
   const isChecklistBot = isChecklistSupportedBot(bot);
-  const todosContext = isChecklistBot ? formatTodosContext(todos) : "";
+  const todosContext = isChecklistBot ? formatTodosContext(todos, now) : "";
   const todoInstructions = isChecklistBot ? getTodoInstructions(bot) : "";
   const ragSection = ragSources.length > 0
     ? `RETRIEVED KNOWLEDGE BASE DOCUMENTS (RAG):

@@ -19,6 +19,10 @@ import {
   stripTodoActionTags,
   parseTodoActions,
   applyTodoActions,
+  computeExpiresAt,
+  formatLocalDate,
+  formatLocalTime,
+  getTodoDueStatus,
   isProductivityBot,
   isChecklistSupportedBot,
   getGreetingInstruction,
@@ -803,6 +807,223 @@ test("buildContext excludes checklist context and instructions for other bots", 
   assert.ok(!sys.includes("CURRENT USER CHECKLIST / TODOS:"));
   assert.ok(!sys.includes("CHECKLIST / TODO MANAGEMENT INTEGRATION:"));
   assert.ok(!sys.includes("<todo_action action="));
+});
+
+test("computeExpiresAt and getTodoDueStatus accurately compute expiry and identify expired yesterday / due today", () => {
+  const baseNow = new Date("2026-11-13T12:00:00");
+
+  const expTomorrow = computeExpiresAt("2026-11-14", "18:00", baseNow);
+  assert.ok(expTomorrow > baseNow.getTime());
+
+  // Todo expired yesterday
+  const yesterdayTodo: Todo = {
+    id: "td-yesterday",
+    text: "Submit financial report",
+    completed: false,
+    createdAt: 1000,
+    dueDate: "2026-11-12",
+    dueTime: "17:00",
+    expiresAt: computeExpiresAt("2026-11-12", "17:00", baseNow),
+  };
+  const statusYesterday = getTodoDueStatus(yesterdayTodo, baseNow);
+  assert.equal(statusYesterday.status, "expired");
+  assert.equal(statusYesterday.isOverdue, true);
+  assert.ok(statusYesterday.label.includes("yesterday"));
+
+  // Todo due today (future time today)
+  const todayTodo: Todo = {
+    id: "td-today",
+    text: "Review landing page",
+    completed: false,
+    createdAt: 2000,
+    dueDate: "2026-11-13",
+    dueTime: "18:00",
+    expiresAt: computeExpiresAt("2026-11-13", "18:00", baseNow),
+  };
+  const statusToday = getTodoDueStatus(todayTodo, baseNow);
+  assert.equal(statusToday.status, "due-today");
+  assert.equal(statusToday.isOverdue, false);
+  assert.ok(statusToday.label.includes("Due today"));
+
+  // Todo due today but time passed (expired today)
+  const todayPastTodo: Todo = {
+    id: "td-today-past",
+    text: "Morning standup notes",
+    completed: false,
+    createdAt: 2000,
+    dueDate: "2026-11-13",
+    dueTime: "09:00",
+    expiresAt: computeExpiresAt("2026-11-13", "09:00", baseNow),
+  };
+  const statusTodayPast = getTodoDueStatus(todayPastTodo, baseNow);
+  assert.equal(statusTodayPast.status, "expired");
+  assert.equal(statusTodayPast.isOverdue, true);
+  assert.ok(statusTodayPast.label.includes("Expired today"));
+
+  // Todo completed
+  const completedTodo: Todo = {
+    ...yesterdayTodo,
+    completed: true,
+    completedAt: baseNow.getTime(),
+  };
+  const statusCompleted = getTodoDueStatus(completedTodo, baseNow);
+  assert.equal(statusCompleted.status, "completed");
+  assert.equal(statusCompleted.isOverdue, false);
+});
+
+test("formatTodosContext formats deadlines and highlights expired yesterday and due today tasks for questioning", () => {
+  const baseNow = new Date("2026-11-13T14:00:00");
+  const todos: Todo[] = [
+    {
+      id: "t-yest",
+      text: "Finalize supplier agreement",
+      completed: false,
+      createdAt: 100,
+      dueDate: "2026-11-12",
+      dueTime: "18:00",
+      expiresAt: computeExpiresAt("2026-11-12", "18:00", baseNow),
+      sourceBotName: "Elon Musk",
+    },
+    {
+      id: "t-today",
+      text: "Deploy v2 beta build",
+      completed: false,
+      createdAt: 200,
+      dueDate: "2026-11-13",
+      dueTime: "20:00",
+      expiresAt: computeExpiresAt("2026-11-13", "20:00", baseNow),
+      sourceBotName: "Steve Jobs",
+    },
+  ];
+
+  const ctx = formatTodosContext(todos, baseNow);
+
+  // Must highlight expired yesterday under alert section for immediate questioning
+  assert.ok(ctx.includes("[OVERDUE / EXPIRED TASKS - QUESTION USER IMMEDIATELY]"));
+  assert.ok(ctx.includes('Finalize supplier agreement" [EXPIRED YESTERDAY AT 18:00]'));
+
+  // Must highlight due today
+  assert.ok(ctx.includes("[TASKS DUE TODAY]"));
+  assert.ok(ctx.includes('Deploy v2 beta build" [DUE TODAY AT 20:00]'));
+
+  // Items lines must show due date and time
+  assert.ok(ctx.includes('Due: 2026-11-12 18:00'));
+  assert.ok(ctx.includes('Due: 2026-11-13 20:00'));
+});
+
+test("parseTodoActions parses dueDate, dueTime, due, and code blocks with deadlines", () => {
+  const xml = `Sure thing, let's track this:
+<todo_action action="add" text="Ship telemetry module" dueDate="2026-11-15" dueTime="16:30" />
+and I'll push the deadline for the other task:
+<todo_action action="update" id="td-1" dueDate="2026-11-16" dueTime="10:00" />`;
+
+  const parsed = parseTodoActions(xml);
+  assert.equal(parsed.actions.length, 2);
+  assert.equal(parsed.actions[0].action, "add");
+  assert.equal(parsed.actions[0].text, "Ship telemetry module");
+  assert.equal(parsed.actions[0].dueDate, "2026-11-15");
+  assert.equal(parsed.actions[0].dueTime, "16:30");
+
+  assert.equal(parsed.actions[1].action, "update");
+  assert.equal(parsed.actions[1].id, "td-1");
+  assert.equal(parsed.actions[1].dueDate, "2026-11-16");
+  assert.equal(parsed.actions[1].dueTime, "10:00");
+
+  // Combined due attribute
+  const combinedXml = `<todo_action action="add" text="Sync with design team" due="2026-11-14 15:00" />`;
+  const parsedCombined = parseTodoActions(combinedXml);
+  assert.equal(parsedCombined.actions[0].dueDate, "2026-11-14");
+  assert.equal(parsedCombined.actions[0].dueTime, "15:00");
+
+  // Code block JSON with deadlines
+  const codeBlock = `\`\`\`todo_action
+{"action": "add", "text": "Run stress test", "dueDate": "2026-11-17", "dueTime": "12:00"}
+\`\`\``;
+  const parsedCode = parseTodoActions(codeBlock);
+  assert.equal(parsedCode.actions[0].dueDate, "2026-11-17");
+  assert.equal(parsedCode.actions[0].dueTime, "12:00");
+});
+
+test("applyTodoActions assigns expiry date/time and updates deadlines", () => {
+  const baseNow = new Date("2026-11-13T10:00:00");
+
+  // Adding with explicit deadline
+  const res1 = applyTodoActions(
+    [],
+    [{ action: "add", text: "Bench test thruster", dueDate: "2026-11-14", dueTime: "17:00" }],
+    { id: "elon-musk", name: "Elon Musk" },
+    "chat-1",
+    baseNow,
+  );
+  assert.equal(res1.nextTodos.length, 1);
+  assert.equal(res1.nextTodos[0].dueDate, "2026-11-14");
+  assert.equal(res1.nextTodos[0].dueTime, "17:00");
+  assert.ok(typeof res1.nextTodos[0].expiresAt === "number");
+
+  // Adding without deadline defaults to today at 23:59
+  const res2 = applyTodoActions(
+    res1.nextTodos,
+    [{ action: "add", text: "Quick check" }],
+    undefined,
+    undefined,
+    baseNow,
+  );
+  assert.equal(res2.nextTodos.length, 2);
+  assert.equal(res2.nextTodos[0].dueDate, formatLocalDate(baseNow));
+  assert.equal(res2.nextTodos[0].dueTime, "23:59");
+  assert.ok(typeof res2.nextTodos[0].expiresAt === "number");
+
+  // Updating deadline
+  const todoId = res1.nextTodos[0].id;
+  const res3 = applyTodoActions(
+    res2.nextTodos,
+    [{ action: "update", id: todoId, dueDate: "2026-11-18", dueTime: "14:00" }],
+    undefined,
+    undefined,
+    baseNow,
+  );
+  const updated = res3.nextTodos.find((t) => t.id === todoId);
+  assert.ok(updated);
+  assert.equal(updated.dueDate, "2026-11-18");
+  assert.equal(updated.dueTime, "14:00");
+  assert.equal(updated.text, "Bench test thruster");
+});
+
+test("buildContext instructs bots to question user on expired / yesterday's tasks and update checklist in real time", () => {
+  const elonBot = initialWorkspace.bots.find((b) => b.id === "elon-musk") || initialWorkspace.bots[0];
+  const baseNow = new Date("2026-11-13T10:00:00");
+  const testChat: Chat = {
+    id: "c1",
+    botId: elonBot.id,
+    title: "Project Orion",
+    messages: [{ id: "m1", role: "user", content: "Good morning Elon" }],
+    summary: "",
+    compactedCount: 0,
+    updatedAt: Date.now(),
+  };
+  const todos: Todo[] = [
+    {
+      id: "td-overdue",
+      text: "Complete orbital trajectory simulation",
+      completed: false,
+      createdAt: 100,
+      dueDate: "2026-11-12",
+      dueTime: "18:00",
+      expiresAt: computeExpiresAt("2026-11-12", "18:00", baseNow),
+    },
+  ];
+
+  const { messages } = buildContext(testChat, elonBot, [], baseNow, todos);
+  const sys = messages[0].content as string;
+
+  // Prompts bot with the expired yesterday task
+  assert.ok(sys.includes("OVERDUE / EXPIRED TASKS - QUESTION USER IMMEDIATELY"));
+  assert.ok(sys.includes("Complete orbital trajectory simulation"));
+  assert.ok(sys.includes("EXPIRED YESTERDAY AT 18:00"));
+
+  // Instructions specifically tell bot to question on deadlines and update in real-time
+  assert.ok(sys.includes("QUESTIONING AND ACCOUNTABILITY ON DUE/EXPIRED TODOS"));
+  assert.ok(sys.includes("REAL-TIME CONVERSATIONAL CHECKLIST UPDATES (ANY TIME OF DAY)"));
 });
 
 test("calculateDropdownPosition prevents overflowing top and clamps height to safe area", () => {
