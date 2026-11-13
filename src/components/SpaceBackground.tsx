@@ -58,7 +58,7 @@ function createOffscreenMoon(radius: number, moonImg: HTMLImageElement | null): 
   // 1. Soft lunar corona / celestial glow
   const glow = mCtx.createRadialGradient(cx, cy, r * 0.75, cx, cy, r * 1.6);
   glow.addColorStop(0, "rgba(225, 235, 250, 0.15)");
-  glow.addColorStop(0.4, "rgba(204, 120, 92, 0.04)");
+  glow.addColorStop(0.4, "rgba(59, 130, 246, 0.05)");
   glow.addColorStop(1, "rgba(0, 0, 0, 0)");
   mCtx.fillStyle = glow;
   mCtx.beginPath();
@@ -160,9 +160,9 @@ export default function SpaceBackground() {
     const starColors = [
       "rgba(255, 255, 255,", // Pure white (Class A)
       "rgba(240, 244, 255,", // Diamond starlight (Class B/A)
-      "rgba(255, 244, 232,", // Pale ivory/amber (Class F/G)
-      "rgba(245, 225, 210,", // Claude terracotta celestial glow (Class K)
-      "rgba(255, 248, 240,", // Warm diamond (Class F)
+      "rgba(215, 235, 255,", // Space blue starlight glow (Class B/O)
+      "rgba(180, 215, 255,", // Deep space blue celestial glow (Class O)
+      "rgba(235, 245, 255,", // Cool diamond starlight (Class A/B)
     ];
 
     function resize() {
@@ -240,9 +240,9 @@ export default function SpaceBackground() {
       const x = fromTop ? Math.random() * width * 0.85 : -20;
       const y = fromTop ? Math.random() * (height * 0.4) : Math.random() * (height * 0.5);
 
-      const isWarm = Math.random() > 0.5;
-      const headColor = isWarm ? "#fff5ea" : "#ffffff";
-      const trailColor = isWarm ? "204, 120, 92" : "240, 225, 215";
+      const isBlue = Math.random() > 0.5;
+      const headColor = isBlue ? "#eef5ff" : "#ffffff";
+      const trailColor = isBlue ? "59, 130, 246" : "195, 220, 255";
 
       return {
         x,
@@ -287,8 +287,8 @@ export default function SpaceBackground() {
       const nebula1X = width * 0.75 + Math.cos(currentTime * 0.0001) * 50;
       const nebula1Y = height * 0.25 + Math.sin(currentTime * 0.0001) * 30;
       const neb1 = ctx.createRadialGradient(nebula1X, nebula1Y, 10, nebula1X, nebula1Y, width * 0.55);
-      neb1.addColorStop(0, "rgba(90, 52, 40, 0.055)");
-      neb1.addColorStop(0.5, "rgba(65, 38, 30, 0.025)");
+      neb1.addColorStop(0, "rgba(35, 75, 160, 0.075)");
+      neb1.addColorStop(0.5, "rgba(25, 55, 125, 0.035)");
       neb1.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = neb1;
       ctx.fillRect(0, 0, width, height);
@@ -296,8 +296,8 @@ export default function SpaceBackground() {
       const nebula2X = width * 0.2 + Math.sin(currentTime * 0.00008) * 40;
       const nebula2Y = height * 0.8 + Math.cos(currentTime * 0.00008) * 25;
       const neb2 = ctx.createRadialGradient(nebula2X, nebula2Y, 10, nebula2X, nebula2Y, width * 0.5);
-      neb2.addColorStop(0, "rgba(80, 45, 35, 0.045)");
-      neb2.addColorStop(0.6, "rgba(55, 32, 25, 0.018)");
+      neb2.addColorStop(0, "rgba(30, 65, 145, 0.065)");
+      neb2.addColorStop(0.6, "rgba(20, 45, 110, 0.025)");
       neb2.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = neb2;
       ctx.fillRect(0, 0, width, height);

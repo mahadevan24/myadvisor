@@ -2985,7 +2985,7 @@ export default function Home() {
                 <div className="chat-center-stage welcome">
                   <div className="hero-composer-box">
                     {error && !settings && (
-                      <div role="alert" className="error-banner" style={{ width: "100%", marginBottom: 16 }}>
+                      <div role="alert" className="error-banner" style={{ marginBottom: 16 }}>
                         {error}
                         <button
                           aria-label="Dismiss error"

@@ -1,7 +1,7 @@
 @layer ui-sdk;
 @import "tailwindcss";
 @theme {
-  --color-accent: #cc785c;
+  --color-accent: #3b82f6;
 }
 :root {
   --bg: #05060a;
@@ -13,8 +13,8 @@
   --muted: #8d93a0;
   --text: #e6e9f0;
   --text-bright: #fafbfe;
-  --accent: #cc785c;
-  --accent-hover: #d9886d;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
   --user-bubble: rgba(30, 34, 48, 0.82);
   --user-bubble-border: rgba(255, 255, 255, 0.1);
   --composer-bg: rgba(20, 23, 33, 0.85);
@@ -1406,7 +1406,7 @@ button:hover:not(:disabled) {
   background: #2a2c30;
 }
 .composer-bot-option.selected {
-  background: rgba(204, 120, 92, 0.14);
+  background: rgba(59, 130, 246, 0.14);
   color: var(--accent);
 }
 .bot-option-info {
@@ -1466,7 +1466,7 @@ button:hover:not(:disabled) {
   transition: background 0.15s;
 }
 .composer-bot-create-btn:hover {
-  background: rgba(204, 120, 92, 0.12);
+  background: rgba(59, 130, 246, 0.12);
 }
 .dropdown-chevron {
   transition: transform 0.2s ease;
@@ -2216,7 +2216,7 @@ button:hover:not(:disabled) {
   50% {
     transform: scale(1.15) rotate(45deg);
     opacity: 1;
-    filter: drop-shadow(0 0 6px rgba(204, 120, 92, 0.6));
+    filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6));
   }
 }
 .claude-thinking-text {
@@ -2318,17 +2318,17 @@ button:hover:not(:disabled) {
   margin-left: 5px;
   vertical-align: -0.15em;
   border-radius: 2px;
-  box-shadow: 0 0 8px rgba(204, 120, 92, 0.5);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
   animation: claudeCursorGlow 0.85s cubic-bezier(0.4, 0, 0.6, 1) infinite alternate;
 }
 @keyframes claudeCursorGlow {
   0% {
     opacity: 0.25;
-    box-shadow: 0 0 2px rgba(204, 120, 92, 0.2);
+    box-shadow: 0 0 2px rgba(59, 130, 246, 0.2);
   }
   100% {
     opacity: 1;
-    box-shadow: 0 0 10px rgba(204, 120, 92, 0.7);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.7);
   }
 }
 
@@ -2450,8 +2450,8 @@ button:hover:not(:disabled) {
   border-color: #3e4650;
 }
 .default-bot-toggle.active {
-  background: rgba(204, 120, 92, 0.14);
-  border-color: rgba(204, 120, 92, 0.38);
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.38);
   color: var(--accent);
   font-weight: 500;
 }
@@ -2531,8 +2531,8 @@ button:hover:not(:disabled) {
   border-color: #444e50;
 }
 .card-default-pill.active {
-  background: rgba(204, 120, 92, 0.14);
-  border-color: rgba(204, 120, 92, 0.38);
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.38);
   color: var(--accent);
   font-weight: 500;
 }
@@ -2658,8 +2658,8 @@ button:hover:not(:disabled) {
   margin-top: 20px;
 }
 .success-banner {
-  background: rgba(204, 120, 92, 0.12);
-  border: 1px solid rgba(204, 120, 92, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   color: var(--accent);
   padding: 10px 14px;
   border-radius: 8px;
@@ -2859,7 +2859,7 @@ button:hover:not(:disabled) {
   font-size: 7px;
   margin-left: 7px;
   color: var(--accent);
-  border: 1px solid rgba(204, 120, 92, 0.35);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   padding: 3px 5px;
   border-radius: 4px;
 }
@@ -3237,6 +3237,49 @@ button:hover:not(:disabled) {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+  .chat-center-stage.welcome {
+    justify-content: flex-end;
+    padding: 0;
+  }
+  .hero-composer-box {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .composer-area {
+    padding: 0;
+  }
+  .composer-area.bottom-center {
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .composer-foot {
+    display: none !important;
+  }
+  .composer-pill {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
+    padding: 8px 12px max(10px, env(safe-area-inset-bottom, 10px));
+  }
+  .composer-pill.has-attachments {
+    border-radius: 16px 16px 0 0;
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom, 10px));
+  }
+  .composer-area.bottom-center .command-status,
+  .composer-area.bottom-center .error-banner,
+  .hero-composer-box .error-banner {
+    width: calc(100% - 20px);
+    margin-left: 10px;
+    margin-right: 10px;
+    margin-bottom: 8px;
+  }
 }
 @media (max-width: 640px) {
   .topbar,
@@ -3270,15 +3313,11 @@ button:hover:not(:disabled) {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .composer-area {
-    padding: 8px 10px 12px;
-  }
-  .composer-area.bottom-center {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
   .composer-pill {
-    padding: 8px 10px;
-    border-radius: 16px;
+    padding: 8px 10px max(10px, env(safe-area-inset-bottom, 10px));
+  }
+  .composer-pill.has-attachments {
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom, 10px));
   }
   .composer-bot-dropdown {
     position: absolute !important;
@@ -3309,6 +3348,9 @@ button:hover:not(:disabled) {
   }
   .chat-center-stage {
     padding: 16px 12px;
+  }
+  .chat-center-stage.welcome {
+    padding: 0;
   }
   .hero-greeting {
     font-size: 24px;
@@ -3358,8 +3400,8 @@ button:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(204, 120, 92, 0.12);
-  border: 1px solid rgba(204, 120, 92, 0.28);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.28);
   color: var(--accent);
   padding: 4px 10px;
   border-radius: 9999px;
@@ -3431,9 +3473,9 @@ button:hover:not(:disabled) {
   background: var(--panel-hover);
 }
 .checklist-toggle-btn.active {
-  background: rgba(204, 120, 92, 0.14);
+  background: rgba(59, 130, 246, 0.14);
   color: var(--accent);
-  border-color: rgba(204, 120, 92, 0.35);
+  border-color: rgba(59, 130, 246, 0.35);
 }
 .checklist-badge {
   display: inline-flex;
@@ -3500,10 +3542,10 @@ button:hover:not(:disabled) {
   font-size: 10.5px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(204, 120, 92, 0.12);
+  background: rgba(59, 130, 246, 0.12);
   padding: 1px 7px;
   border-radius: 9999px;
-  border: 1px solid rgba(204, 120, 92, 0.28);
+  border: 1px solid rgba(59, 130, 246, 0.28);
 }
 .checklist-close-btn {
   background: transparent;
@@ -3558,9 +3600,9 @@ button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.04);
 }
 .checklist-filter-tab.active {
-  background: rgba(204, 120, 92, 0.14);
+  background: rgba(59, 130, 246, 0.14);
   color: var(--accent);
-  border-color: rgba(204, 120, 92, 0.28);
+  border-color: rgba(59, 130, 246, 0.28);
   font-weight: 600;
 }
 
@@ -3589,7 +3631,7 @@ button:hover:not(:disabled) {
 }
 .checklist-add-input:focus {
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 1px rgba(204, 120, 92, 0.35);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35);
 }
 .checklist-add-btn {
   background: #232323;
@@ -3691,7 +3733,7 @@ button:hover:not(:disabled) {
   font-size: 12px;
   color: var(--text-bright);
   outline: none;
-  box-shadow: 0 0 0 1px rgba(204, 120, 92, 0.35);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35);
 }
 .checklist-item-bot-tag {
   display: inline-flex;
@@ -3814,14 +3856,14 @@ button:hover:not(:disabled) {
   max-width: 100%;
 }
 .todo-action-badge.add {
-  background: rgba(204, 120, 92, 0.12);
+  background: rgba(59, 130, 246, 0.12);
   color: var(--accent);
-  border: 1px solid rgba(204, 120, 92, 0.28);
+  border: 1px solid rgba(59, 130, 246, 0.28);
 }
 .todo-action-badge.complete {
-  background: rgba(204, 120, 92, 0.14);
+  background: rgba(59, 130, 246, 0.14);
   color: var(--accent);
-  border: 1px solid rgba(204, 120, 92, 0.32);
+  border: 1px solid rgba(59, 130, 246, 0.32);
 }
 .todo-action-badge.update {
   background: rgba(229, 181, 153, 0.12);
