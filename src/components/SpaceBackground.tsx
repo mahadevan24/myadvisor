@@ -138,11 +138,11 @@ export default function SpaceBackground() {
     // Orbital movement settings
     // Stars sky and Moon drift together along the orbital trajectory (~18 degree angle)
     const orbitalAngle = (18 * Math.PI) / 180;
-    const baseOrbitalSpeed = 0.24; // Smooth, visible celestial drift speed
+    const baseOrbitalSpeed = 0.12; // Smooth, visible celestial drift speed (2x slower)
     const dirX = Math.cos(orbitalAngle);
     const dirY = Math.sin(orbitalAngle);
 
-    const moonBaseSpeed = 0.38;
+    const moonBaseSpeed = 0.19; // 2x slower majestic celestial motion
     let moon: MoonState = {
       active: false,
       x: -(moonRadius * 2 + 20),
@@ -367,7 +367,7 @@ export default function SpaceBackground() {
         moon.active = true;
         moon.x = -(moon.radius * 2 + 20);
         moon.y = Math.random() * (height * 0.35) + 40;
-        const moonSpeed = 0.34 + Math.random() * 0.08;
+        const moonSpeed = 0.17 + Math.random() * 0.04; // 2x slower traversal speed
         moon.vx = dirX * moonSpeed;
         moon.vy = dirY * moonSpeed;
         moon.alpha = 0.85;
