@@ -556,6 +556,22 @@ test("mergeBots respects deletedBotIds and prevents resurrecting deleted default
   assert.ok(merged.some((b) => b.id === "bot-custom-3"), "Custom bot must be preserved");
 });
 
+test("default Elon Musk bot uses google/gemini-flash-latest and updates legacy gpt-4o-mini", () => {
+  const elonDefault = initialWorkspace.bots.find((b) => b.id === "elon-musk");
+  assert.ok(elonDefault, "Elon Musk must exist in initialWorkspace");
+  assert.equal(elonDefault.model, "google/gemini-flash-latest");
+
+  // If a legacy cached workspace had elon-musk on openai/gpt-4o-mini, mergeBots upgrades it
+  const legacyElon: Bot = {
+    ...elonDefault,
+    model: "openai/gpt-4o-mini",
+  };
+  const merged = mergeBots([legacyElon], []);
+  const mergedElon = merged.find((b) => b.id === "elon-musk");
+  assert.ok(mergedElon);
+  assert.equal(mergedElon.model, "google/gemini-flash-latest");
+});
+
 test("context management bounds token usage by trimming heavy attachments on older turns", () => {
   const multiTurnChat: Chat = {
     ...chat,
