@@ -719,7 +719,7 @@ button:hover:not(:disabled) {
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: rgba(6, 8, 14, 0.42);
 }
 .conversation-toolbar {
   height: 67px;
@@ -1531,35 +1531,34 @@ button:hover:not(:disabled) {
 .composer-mode-pill {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #c4c7c5;
   font-size: 12px;
   font-weight: 500;
-  padding: 5px 9px;
+  padding: 5px 10px;
   border-radius: 9999px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.composer-mode-pill.fast {
-  color: #facc15;
-  border-color: rgba(250, 204, 21, 0.25);
-  background: rgba(250, 204, 21, 0.07);
+.composer-mode-pill .composer-mode-icon {
+  color: var(--accent);
 }
-.composer-mode-pill.fast:hover {
-  background: rgba(250, 204, 21, 0.14);
-  border-color: rgba(250, 204, 21, 0.4);
-  color: #fde047;
+.composer-mode-pill:hover {
+  background: #2a2c30;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.14);
 }
 .composer-mode-pill.active {
-  color: #c084fc;
-  border-color: rgba(192, 132, 252, 0.35);
-  background: rgba(192, 132, 252, 0.1);
+  color: var(--accent);
+  border-color: rgba(204, 120, 92, 0.38);
+  background: rgba(204, 120, 92, 0.12);
 }
 .composer-mode-pill.active:hover {
-  background: rgba(192, 132, 252, 0.18);
-  border-color: rgba(192, 132, 252, 0.5);
-  color: #e9d5ff;
+  background: rgba(204, 120, 92, 0.2);
+  border-color: rgba(204, 120, 92, 0.5);
+  color: var(--accent-hover);
 }
 .composer-icon-btn {
   width: 34px;
@@ -1925,6 +1924,7 @@ button:hover:not(:disabled) {
   flex-direction: column;
   align-items: center;
   scroll-behavior: smooth;
+  background: radial-gradient(ellipse 95% 85% at 50% 35%, rgba(8, 10, 16, 0.22) 0%, rgba(5, 6, 10, 0.48) 100%);
 }
 .messages-inner {
   width: 100%;

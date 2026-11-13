@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   AudioLines,
   BookOpen,
-  Brain,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -35,7 +34,6 @@ import {
   Trash2,
   Upload,
   X,
-  Zap,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -2369,13 +2367,13 @@ export default function Home() {
             </button>
             <button
               type="button"
-              className={`composer-mode-pill ${deepThinking ? "active" : "fast"}`}
+              className={`composer-mode-pill ${deepThinking ? "active" : ""}`}
               disabled={busy}
               onClick={() => setDeepThinking(!deepThinking)}
-              aria-label={deepThinking ? "Deep thinking enabled. Click to switch to Fast mode." : "Fast mode active (1-2s replies). Click to switch to Thinking mode."}
+              aria-label={deepThinking ? "Thinking mode enabled. Click to switch to Fast mode." : "Fast mode active (1-2s replies). Click to switch to Thinking mode."}
               title={deepThinking ? "Thinking Mode: Deep analytical reasoning (takes ~5-10s)" : "Fast Mode: Ultra-fast 1-2s replies without thinking lag"}
             >
-              {deepThinking ? <Brain size={13} /> : <Zap size={13} />}
+              <Sparkles size={13} className="composer-mode-icon" />
               <span>{deepThinking ? "Think" : "Fast"}</span>
             </button>
           </div>
