@@ -42,6 +42,157 @@ interface DistantSatellite {
   active: boolean;
 }
 
+interface MoonState {
+  active: boolean;
+  x: number;
+  y: number;
+  radius: number;
+  vx: number;
+  vy: number;
+  alpha: number;
+  nextAppearanceTime: number;
+}
+
+// Procedurally generate a detailed, realistic offscreen Moon canvas
+function createOffscreenMoon(radius: number): HTMLCanvasElement {
+  const size = Math.ceil(radius * 4); // Extra margin for soft lunar corona / glow
+  const mCanvas = document.createElement("canvas");
+  mCanvas.width = size;
+  mCanvas.height = size;
+  const mCtx = mCanvas.getContext("2d");
+  if (!mCtx) return mCanvas;
+
+  const cx = size / 2;
+  const cy = size / 2;
+
+  // 1. Soft lunar corona / celestial glow
+  const glow = mCtx.createRadialGradient(cx, cy, radius * 0.7, cx, cy, radius * 1.85);
+  glow.addColorStop(0, "rgba(235, 220, 205, 0.18)");
+  glow.addColorStop(0.5, "rgba(204, 120, 92, 0.06)");
+  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  mCtx.fillStyle = glow;
+  mCtx.beginPath();
+  mCtx.arc(cx, cy, radius * 1.85, 0, Math.PI * 2);
+  mCtx.fill();
+
+  // 2. Clip to moon disc for surface details
+  mCtx.save();
+  mCtx.beginPath();
+  mCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+  mCtx.clip();
+
+  // 3. Base spherical body gradient (simulating sunlight from upper-left)
+  const sunX = cx - radius * 0.45;
+  const sunY = cy - radius * 0.45;
+  const baseGrad = mCtx.createRadialGradient(sunX, sunY, radius * 0.1, cx, cy, radius * 1.15);
+  baseGrad.addColorStop(0, "#f3f5fa"); // Sunlit highlight
+  baseGrad.addColorStop(0.45, "#d2d7e4"); // Midtone regolith
+  baseGrad.addColorStop(0.75, "#8e95a5"); // Penumbra
+  baseGrad.addColorStop(1, "#363a48"); // Shadowed limb
+  mCtx.fillStyle = baseGrad;
+  mCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+  // 4. Lunar Maria (dark basaltic volcanic plains)
+  const mariaData = [
+    { x: -0.22, y: -0.2, rx: 0.32, ry: 0.28, rot: 0.2 }, // Mare Imbrium
+    { x: -0.4, y: 0.05, rx: 0.3, ry: 0.4, rot: -0.3 }, // Oceanus Procellarum
+    { x: 0.25, y: -0.25, rx: 0.22, ry: 0.2, rot: 0.1 }, // Mare Serenitatis
+    { x: 0.32, y: 0.02, rx: 0.24, ry: 0.22, rot: -0.1 }, // Mare Tranquillitatis
+    { x: 0.52, y: -0.15, rx: 0.16, ry: 0.14, rot: 0.2 }, // Mare Crisium
+    { x: 0.15, y: 0.28, rx: 0.28, ry: 0.18, rot: 0.15 }, // Mare Fecunditatis
+  ];
+
+  mCtx.fillStyle = "rgba(65, 70, 85, 0.38)";
+  mariaData.forEach((m) => {
+    mCtx.save();
+    mCtx.translate(cx + m.x * radius, cy + m.y * radius);
+    mCtx.rotate(m.rot);
+    mCtx.beginPath();
+    mCtx.ellipse(0, 0, m.rx * radius, m.ry * radius, 0, 0, Math.PI * 2);
+    mCtx.fill();
+    mCtx.restore();
+  });
+
+  // Secondary soft patches
+  mCtx.fillStyle = "rgba(45, 50, 65, 0.22)";
+  [
+    { x: -0.1, y: 0.18, r: radius * 0.18 },
+    { x: 0.05, y: -0.05, r: radius * 0.14 },
+    { x: 0.38, y: 0.22, r: radius * 0.12 },
+  ].forEach((p) => {
+    mCtx.beginPath();
+    mCtx.arc(cx + p.x, cy + p.y, p.r, 0, Math.PI * 2);
+    mCtx.fill();
+  });
+
+  // 5. Prominent impact craters (Tycho, Copernicus, Kepler, Aristarchus)
+  const craters = [
+    { x: 0.05, y: 0.52, r: radius * 0.07, ray: true }, // Tycho with ray system
+    { x: -0.18, y: -0.08, r: radius * 0.065, ray: true }, // Copernicus
+    { x: -0.38, y: -0.04, r: radius * 0.045, ray: false }, // Kepler
+    { x: -0.44, y: -0.22, r: radius * 0.038, ray: false }, // Aristarchus
+    { x: 0.28, y: 0.44, r: radius * 0.05, ray: false },
+  ];
+
+  craters.forEach((c) => {
+    const px = cx + c.x * radius;
+    const py = cy + c.y * radius;
+
+    // Ray system (faint bright ejecta streaks)
+    if (c.ray) {
+      mCtx.strokeStyle = "rgba(245, 248, 255, 0.18)";
+      mCtx.lineWidth = 1;
+      for (let a = 0; a < 6; a++) {
+        const ang = (a * Math.PI) / 3 + 0.2;
+        mCtx.beginPath();
+        mCtx.moveTo(px, py);
+        mCtx.lineTo(px + Math.cos(ang) * radius * 0.35, py + Math.sin(ang) * radius * 0.35);
+        mCtx.stroke();
+      }
+    }
+
+    // Crater depression shadow
+    mCtx.fillStyle = "rgba(25, 28, 38, 0.55)";
+    mCtx.beginPath();
+    mCtx.arc(px, py, c.r, 0, Math.PI * 2);
+    mCtx.fill();
+
+    // Illuminated crater rim
+    mCtx.strokeStyle = "rgba(255, 255, 255, 0.65)";
+    mCtx.lineWidth = Math.max(1, radius * 0.02);
+    mCtx.beginPath();
+    mCtx.arc(px, py, c.r, Math.PI * 0.75, Math.PI * 1.75);
+    mCtx.stroke();
+  });
+
+  // 6. 3D Waxing Gibbous Terminator Shadow
+  const shadowGrad = mCtx.createRadialGradient(
+    cx + radius * 0.65,
+    cy + radius * 0.65,
+    radius * 0.2,
+    cx + radius * 0.3,
+    cy + radius * 0.3,
+    radius * 1.15
+  );
+  shadowGrad.addColorStop(0, "rgba(10, 12, 18, 0.88)"); // Dark side
+  shadowGrad.addColorStop(0.55, "rgba(20, 24, 34, 0.5)"); // Terminator gradient
+  shadowGrad.addColorStop(1, "rgba(0, 0, 0, 0)"); // Illuminated face
+  mCtx.fillStyle = shadowGrad;
+  mCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+  // Subtle illuminated limb highlight
+  const limbGrad = mCtx.createRadialGradient(sunX, sunY, radius * 0.9, sunX, sunY, radius * 1.02);
+  limbGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
+  limbGrad.addColorStop(0.8, "rgba(240, 248, 255, 0.35)");
+  limbGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  mCtx.fillStyle = limbGrad;
+  mCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+  mCtx.restore();
+
+  return mCanvas;
+}
+
 export default function SpaceBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -75,9 +226,23 @@ export default function SpaceBackground() {
     };
     let nextSatelliteSpawn = performance.now() + 8000;
 
+    // Orbiting Moon
+    const moonRadius = 46;
+    let offscreenMoon: HTMLCanvasElement | null = null;
+    let moon: MoonState = {
+      active: false,
+      x: -moonRadius * 2,
+      y: 120,
+      radius: moonRadius,
+      vx: 0.36,
+      vy: 0.12,
+      alpha: 0,
+      nextAppearanceTime: performance.now() + 6000, // Starts first pass in ~6 seconds
+    };
+
     // Orbital movement settings
     // Simulates looking out from an orbiting satellite moving through space
-    // Stars slowly drift along an orbital tangent vector (~18-20 degree tilt)
+    // Stars and celestial bodies drift along an orbital tangent vector (~18-20 degree tilt)
     const orbitalAngle = (18 * Math.PI) / 180;
     const baseOrbitalSpeed = 0.22; // pixels per frame at 60fps
     const dirX = Math.cos(orbitalAngle);
@@ -86,10 +251,10 @@ export default function SpaceBackground() {
     // Color palettes for stars
     const starColors = [
       "rgba(255, 255, 255,", // Pure white
-      "rgba(225, 238, 255,", // Cool icy blue
-      "rgba(200, 225, 255,", // Deep blue-white
-      "rgba(255, 245, 220,", // Warm star gold
-      "rgba(245, 230, 255,", // Faint violet
+      "rgba(240, 242, 246,", // Soft starlight
+      "rgba(255, 238, 224,", // Warm amber
+      "rgba(245, 225, 210,", // Claude terracotta glow
+      "rgba(255, 245, 235,", // Warm diamond
     ];
 
     function resize() {
@@ -104,6 +269,7 @@ export default function SpaceBackground() {
       canvas.style.height = `${height}px`;
 
       ctx!.scale(dpr, dpr);
+      offscreenMoon = createOffscreenMoon(moonRadius);
       initStars();
     }
 
@@ -156,9 +322,9 @@ export default function SpaceBackground() {
       const x = fromTop ? Math.random() * width * 0.85 : -20;
       const y = fromTop ? Math.random() * (height * 0.4) : Math.random() * (height * 0.5);
 
-      const isWarm = Math.random() > 0.7;
-      const headColor = isWarm ? "#fff8e7" : "#e0f2fe";
-      const trailColor = isWarm ? "255, 215, 150" : "165, 220, 255";
+      const isWarm = Math.random() > 0.5;
+      const headColor = isWarm ? "#fff5ea" : "#ffffff";
+      const trailColor = isWarm ? "204, 120, 92" : "240, 225, 215";
 
       return {
         x,
@@ -203,8 +369,8 @@ export default function SpaceBackground() {
       const nebula1X = width * 0.75 + Math.cos(currentTime * 0.0001) * 30;
       const nebula1Y = height * 0.25 + Math.sin(currentTime * 0.0001) * 20;
       const neb1 = ctx.createRadialGradient(nebula1X, nebula1Y, 10, nebula1X, nebula1Y, width * 0.55);
-      neb1.addColorStop(0, "rgba(56, 42, 100, 0.09)");
-      neb1.addColorStop(0.5, "rgba(25, 35, 75, 0.04)");
+      neb1.addColorStop(0, "rgba(90, 52, 40, 0.06)");
+      neb1.addColorStop(0.5, "rgba(65, 38, 30, 0.03)");
       neb1.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = neb1;
       ctx.fillRect(0, 0, width, height);
@@ -212,53 +378,99 @@ export default function SpaceBackground() {
       const nebula2X = width * 0.2 + Math.sin(currentTime * 0.00008) * 40;
       const nebula2Y = height * 0.8 + Math.cos(currentTime * 0.00008) * 25;
       const neb2 = ctx.createRadialGradient(nebula2X, nebula2Y, 10, nebula2X, nebula2Y, width * 0.5);
-      neb2.addColorStop(0, "rgba(18, 55, 80, 0.07)");
-      neb2.addColorStop(0.6, "rgba(12, 30, 50, 0.03)");
+      neb2.addColorStop(0, "rgba(80, 45, 35, 0.05)");
+      neb2.addColorStop(0.6, "rgba(55, 32, 25, 0.02)");
       neb2.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = neb2;
       ctx.fillRect(0, 0, width, height);
 
-      // 3. Render stars with parallax orbital drift
+      // 3. Render distant background stars (Layer 0)
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
+        if (star.layer !== 0) continue;
 
-        // Layer-dependent orbital speed (creates real satellite motion parallax)
-        const layerMultiplier = star.layer === 0 ? 0.6 : star.layer === 1 ? 1.0 : 1.7;
+        const moveDist = baseOrbitalSpeed * 0.6 * deltaFactor;
+        star.x += dirX * moveDist;
+        star.y += dirY * moveDist;
+
+        const margin = 20;
+        if (star.x > width + margin) star.x = -margin;
+        else if (star.x < -margin) star.x = width + margin;
+        if (star.y > height + margin) star.y = -margin;
+        else if (star.y < -margin) star.y = height + margin;
+
+        star.twinklePhase += star.twinkleSpeed * deltaFactor;
+        const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.5;
+        const currentAlpha = Math.max(0.18, Math.min(1, star.baseAlpha * (0.68 + twinkle * 0.4)));
+
+        ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 4. Orbiting Moon
+      if (moon.active && offscreenMoon) {
+        moon.x += moon.vx * deltaFactor;
+        moon.y += moon.vy * deltaFactor;
+
+        // Smooth fade-in on entrance and fade-out on exit
+        if (moon.x < 140) {
+          moon.alpha = Math.min(0.85, moon.alpha + 0.008 * deltaFactor);
+        } else if (moon.x > width - 140) {
+          moon.alpha = Math.max(0, moon.alpha - 0.008 * deltaFactor);
+        } else {
+          moon.alpha = 0.85;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = moon.alpha;
+        const drawSize = moon.radius * 4;
+        ctx.drawImage(offscreenMoon, moon.x - drawSize / 2, moon.y - drawSize / 2, drawSize, drawSize);
+        ctx.restore();
+
+        // Check if Moon has crossed the screen
+        if (moon.x > width + moon.radius * 2 || moon.y > height + moon.radius * 2) {
+          moon.active = false;
+          // Next orbital pass in ~70 to 110 seconds
+          moon.nextAppearanceTime = currentTime + 70000 + Math.random() * 40000;
+        }
+      } else if (currentTime > moon.nextAppearanceTime && !moon.active) {
+        // Spawn Moon along the orbital plane
+        moon.active = true;
+        moon.x = -moon.radius * 2;
+        moon.y = Math.random() * (height * 0.35) + 40;
+        moon.vx = 0.32 + Math.random() * 0.12; // slow majestic orbital drift
+        moon.vy = 0.09 + Math.random() * 0.06;
+        moon.alpha = 0;
+      }
+
+      // 5. Render Mid & Near stars (Layers 1 & 2)
+      for (let i = 0; i < stars.length; i++) {
+        const star = stars[i];
+        if (star.layer === 0) continue;
+
+        const layerMultiplier = star.layer === 1 ? 1.0 : 1.7;
         const moveDist = baseOrbitalSpeed * layerMultiplier * deltaFactor;
 
         star.x += dirX * moveDist;
         star.y += dirY * moveDist;
 
-        // Wrap around seamlessly when drifting off boundaries
         const margin = 20;
-        if (star.x > width + margin) {
-          star.x = -margin;
-          star.y = Math.random() * height;
-        } else if (star.x < -margin) {
-          star.x = width + margin;
-          star.y = Math.random() * height;
-        }
+        if (star.x > width + margin) star.x = -margin;
+        else if (star.x < -margin) star.x = width + margin;
+        if (star.y > height + margin) star.y = -margin;
+        else if (star.y < -margin) star.y = height + margin;
 
-        if (star.y > height + margin) {
-          star.y = -margin;
-          star.x = Math.random() * width;
-        } else if (star.y < -margin) {
-          star.y = height + margin;
-          star.x = Math.random() * width;
-        }
-
-        // Twinkle calculation
         star.twinklePhase += star.twinkleSpeed * deltaFactor;
-        const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.5; // 0 to 1
+        const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.5;
         const currentAlpha = Math.max(0.18, Math.min(1, star.baseAlpha * (0.68 + twinkle * 0.4)));
 
-        // Draw star
         ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Extra halo for near bright stars
         if (star.layer === 2 && currentAlpha > 0.65) {
           ctx.fillStyle = `${star.color}${(currentAlpha * 0.2).toFixed(3)})`;
           ctx.beginPath();
@@ -267,22 +479,20 @@ export default function SpaceBackground() {
         }
       }
 
-      // 4. Distant satellite orbiting with blinking beacon
+      // 6. Distant satellite orbiting with blinking beacon
       if (satellite.active) {
         satellite.x += satellite.vx * deltaFactor;
         satellite.y += satellite.vy * deltaFactor;
         satellite.blinkPhase += satellite.blinkSpeed * deltaFactor;
 
-        // Render satellite body
         ctx.fillStyle = "rgba(220, 235, 255, 0.75)";
         ctx.beginPath();
         ctx.arc(satellite.x, satellite.y, satellite.size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Pulsing navigation beacon (tiny red/green/white beacon blink)
         const beaconIntensity = Math.pow(Math.sin(satellite.blinkPhase), 6);
         if (beaconIntensity > 0.4) {
-          ctx.fillStyle = `rgba(100, 220, 255, ${(beaconIntensity * 0.9).toFixed(2)})`;
+          ctx.fillStyle = `rgba(204, 120, 92, ${(beaconIntensity * 0.9).toFixed(2)})`;
           ctx.beginPath();
           ctx.arc(satellite.x, satellite.y, satellite.size * 2.2, 0, Math.PI * 2);
           ctx.fill();
@@ -305,21 +515,18 @@ export default function SpaceBackground() {
         };
       }
 
-      // 5. Periodic Shooting Stars / Falling Stars
+      // 7. Periodic Shooting Stars / Falling Stars
       if (currentTime > nextShootingStarTime) {
         shootingStars.push(createShootingStar());
-        // Next shooting star in 3.5 to 7.5 seconds
         nextShootingStarTime = currentTime + 3500 + Math.random() * 4000;
       }
 
-      // Render active shooting stars
       for (let i = shootingStars.length - 1; i >= 0; i--) {
         const ss = shootingStars[i];
         ss.age += deltaFactor;
         ss.x += ss.dx * deltaFactor;
         ss.y += ss.dy * deltaFactor;
 
-        // Fade in rapidly, then fade out smoothly
         const lifeRatio = ss.age / ss.maxAge;
         if (lifeRatio < 0.25) {
           ss.opacity = (lifeRatio / 0.25) * ss.maxOpacity;
@@ -332,11 +539,9 @@ export default function SpaceBackground() {
           continue;
         }
 
-        // Calculate tail start position
         const tailX = ss.x - Math.cos(ss.angle) * ss.length;
         const tailY = ss.y - Math.sin(ss.angle) * ss.length;
 
-        // Gradient for the falling star tail
         const gradient = ctx.createLinearGradient(tailX, tailY, ss.x, ss.y);
         gradient.addColorStop(0, `rgba(${ss.trailColor}, 0)`);
         gradient.addColorStop(0.65, `rgba(${ss.trailColor}, ${(ss.opacity * 0.35).toFixed(3)})`);
@@ -352,13 +557,11 @@ export default function SpaceBackground() {
         ctx.lineTo(ss.x, ss.y);
         ctx.stroke();
 
-        // Glowing head of the falling star
         ctx.fillStyle = ss.headColor;
         ctx.beginPath();
         ctx.arc(ss.x, ss.y, ss.size * 1.3, 0, Math.PI * 2);
         ctx.fill();
 
-        // Outer flare around head
         const flare = ctx.createRadialGradient(ss.x, ss.y, 0, ss.x, ss.y, ss.size * 4);
         flare.addColorStop(0, `rgba(255, 255, 255, ${(ss.opacity * 0.9).toFixed(2)})`);
         flare.addColorStop(0.4, `rgba(${ss.trailColor}, ${(ss.opacity * 0.4).toFixed(2)})`);
@@ -372,7 +575,6 @@ export default function SpaceBackground() {
       animationFrameId = requestAnimationFrame(render);
     }
 
-    // Handle visibility changes to preserve resources when tab is hidden
     function handleVisibilityChange() {
       if (document.hidden) {
         cancelAnimationFrame(animationFrameId);

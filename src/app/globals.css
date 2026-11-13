@@ -398,10 +398,10 @@ button:hover:not(:disabled) {
 }
 .bot-default-star.active {
   opacity: 1;
-  color: #c1f99a;
+  color: var(--accent);
 }
 .bot-default-star:hover {
-  color: #c1f99a;
+  color: var(--accent);
 }
 .sidebar-quick-bots {
   display: flex;
@@ -465,13 +465,13 @@ button:hover:not(:disabled) {
 .offline-dot {
   width: 5px;
   height: 5px;
-  background: #baf490;
+  background: var(--accent);
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
 }
 .offline-dot {
-  background: #9a9576;
+  background: #555860;
 }
 .recent-label {
   margin-top: 26px;
@@ -576,7 +576,7 @@ button:hover:not(:disabled) {
   color: #b6b3a4;
 }
 .key-status.connected {
-  color: #b0d598;
+  color: var(--accent);
 }
 .topbar-left {
   display: flex;
@@ -1029,7 +1029,7 @@ button:hover:not(:disabled) {
 }
 .send-button {
   background: var(--accent);
-  color: #26351d;
+  color: #ffffff;
   height: 30px;
   width: 30px;
   border-radius: 6px;
@@ -1436,8 +1436,8 @@ button:hover:not(:disabled) {
   background: #2a2c30;
 }
 .composer-bot-option.selected {
-  background: rgba(142, 230, 203, 0.12);
-  color: #8ee6cb;
+  background: rgba(204, 120, 92, 0.14);
+  color: var(--accent);
 }
 .bot-option-info {
   display: flex;
@@ -1460,13 +1460,13 @@ button:hover:not(:disabled) {
   white-space: nowrap;
 }
 .bot-option-default {
-  color: #e8a87c;
+  color: var(--accent);
   display: flex;
   align-items: center;
   margin-right: 4px;
 }
 .bot-option-check {
-  color: #8ee6cb;
+  color: var(--accent);
   flex-shrink: 0;
 }
 .dropdown-section-label {
@@ -1489,14 +1489,14 @@ button:hover:not(:disabled) {
   border-radius: 8px;
   background: transparent;
   border: none;
-  color: #8ee6cb;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s;
 }
 .composer-bot-create-btn:hover {
-  background: rgba(142, 230, 203, 0.1);
+  background: rgba(204, 120, 92, 0.12);
 }
 .dropdown-chevron {
   transition: transform 0.2s ease;
@@ -2455,13 +2455,13 @@ button:hover:not(:disabled) {
 }
 .primary-button {
   background: var(--accent);
-  color: #24331b;
+  color: #ffffff;
   font-weight: 600;
 }
 .secondary-button {
-  border: 1px solid #3b4436;
-  background: #1c221a;
-  color: #c0d0b1;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
 }
 .editor-default-row {
   margin: 16px 0 8px;
@@ -2486,9 +2486,9 @@ button:hover:not(:disabled) {
   border-color: #3e4650;
 }
 .default-bot-toggle.active {
-  background: #1c281e;
-  border-color: #3f5d37;
-  color: #c1f99a;
+  background: rgba(204, 120, 92, 0.14);
+  border-color: rgba(204, 120, 92, 0.38);
+  color: var(--accent);
   font-weight: 500;
 }
 .bot-editor-actions {
@@ -2567,9 +2567,9 @@ button:hover:not(:disabled) {
   border-color: #444e50;
 }
 .card-default-pill.active {
-  background: #202e21;
-  border-color: #3f5d37;
-  color: #c1f99a;
+  background: rgba(204, 120, 92, 0.14);
+  border-color: rgba(204, 120, 92, 0.38);
+  color: var(--accent);
   font-weight: 500;
 }
 .card-settings {
@@ -2694,9 +2694,9 @@ button:hover:not(:disabled) {
   margin-top: 20px;
 }
 .success-banner {
-  background: rgba(142, 230, 203, 0.12);
-  border: 1px solid rgba(142, 230, 203, 0.35);
-  color: #8ee6cb;
+  background: rgba(204, 120, 92, 0.12);
+  border: 1px solid rgba(204, 120, 92, 0.35);
+  color: var(--accent);
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 13px;
@@ -2707,36 +2707,60 @@ button:hover:not(:disabled) {
   align-items: center;
   gap: 10px;
   background: #15191c;
-  border: 1px solid #30362f;
+  border: 1px solid #2d3138;
   border-radius: 7px;
   padding: 12px 14px;
   margin-bottom: 26px;
   max-width: 440px;
-  color: #859479;
+  width: 100%;
+  color: var(--muted);
+  transition: border-color 0.15s ease;
+}
+.search-box:focus-within {
+  border-color: var(--accent);
 }
 .search-box input {
   background: none;
   border: 0;
   width: 100%;
-  font-size: 12px;
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+}
+.search-box-clear {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+.search-box-clear:hover {
+  color: var(--text-bright);
 }
 .entry-card {
   text-align: left;
   background: #15191b;
-  border: 1px solid #2e342d;
+  border: 1px solid #2d3138;
   border-radius: 9px;
   padding: 23px;
   min-width: 0;
 }
 .entry-card > svg {
-  color: #bdcfaa;
+  color: var(--accent);
   margin-bottom: 17px;
 }
 .entry-bot {
   display: block;
   font-size: 7px;
   letter-spacing: 1px;
-  color: #849a73;
+  color: var(--accent);
 }
 .entry-card h2 {
   font-size: 18px;
@@ -2852,14 +2876,14 @@ button:hover:not(:disabled) {
 }
 .text-link {
   font-size: 10px;
-  color: #bad3a2;
+  color: var(--accent);
   display: inline-flex;
   gap: 6px;
   align-items: center;
 }
 .settings-divider {
   height: 1px;
-  background: #2d362b;
+  background: var(--line);
   margin: 24px 0;
 }
 .modal h3 {
@@ -2869,8 +2893,8 @@ button:hover:not(:disabled) {
 .tiny-tag {
   font-size: 7px;
   margin-left: 7px;
-  color: #879c75;
-  border: 1px solid #3c4734;
+  color: var(--accent);
+  border: 1px solid rgba(204, 120, 92, 0.35);
   padding: 3px 5px;
   border-radius: 4px;
 }
@@ -2885,7 +2909,7 @@ button:hover:not(:disabled) {
   align-items: center;
   gap: 9px;
   margin: 22px 0;
-  color: #b1c0a6;
+  color: var(--text);
   font-size: 11px;
 }
 .full-width {
@@ -2902,7 +2926,7 @@ button:hover:not(:disabled) {
   height: 33px;
 }
 .chosen {
-  outline: 1px solid #b5d393;
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .entry-modal {
@@ -3367,9 +3391,9 @@ button:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.28);
-  color: #4ade80;
+  background: rgba(204, 120, 92, 0.12);
+  border: 1px solid rgba(204, 120, 92, 0.28);
+  color: var(--accent);
   padding: 4px 10px;
   border-radius: 9999px;
   font-size: 11px;
@@ -3828,9 +3852,9 @@ button:hover:not(:disabled) {
   border: 1px solid rgba(204, 120, 92, 0.28);
 }
 .todo-action-badge.complete {
-  background: rgba(186, 244, 144, 0.1);
-  color: #baf490;
-  border: 1px solid rgba(186, 244, 144, 0.25);
+  background: rgba(204, 120, 92, 0.14);
+  color: var(--accent);
+  border: 1px solid rgba(204, 120, 92, 0.32);
 }
 .todo-action-badge.update {
   background: rgba(229, 181, 153, 0.12);

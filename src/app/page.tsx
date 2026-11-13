@@ -534,6 +534,7 @@ export default function Home() {
   const [deepThinking, setDeepThinking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [botSearch, setBotSearch] = useState("");
   const [entry, setEntry] = useState<Entry | null>(null);
   const [botPickerOpen, setBotPickerOpen] = useState(false);
   const [botPickerSearch, setBotPickerSearch] = useState("");
@@ -614,6 +615,31 @@ export default function Home() {
     () => filterBotsByQuery(groupedBots, botPickerSearch),
     [groupedBots, botPickerSearch]
   );
+
+  const filteredLibraryBots = useMemo(() => {
+    const q = botSearch.trim().toLowerCase();
+    const categoryBots =
+      selectedCategoryFilter === "All"
+        ? workspace.bots
+        : workspace.bots.filter(
+            (b) => (b.category?.trim() || "General") === selectedCategoryFilter
+          );
+
+    if (!q) return categoryBots;
+
+    return categoryBots.filter((b) => {
+      const name = b.name.toLowerCase();
+      const desc = (b.description || "").toLowerCase();
+      const cat = (b.category || "General").toLowerCase();
+      const model = (b.model || "").toLowerCase();
+      return (
+        name.includes(q) ||
+        desc.includes(q) ||
+        cat.includes(q) ||
+        model.includes(q)
+      );
+    });
+  }, [workspace.bots, selectedCategoryFilter, botSearch]);
 
   function importBotsList(botsToImport: Bot[]) {
     try {
@@ -3049,6 +3075,33 @@ export default function Home() {
                 </div>
               )}
             </div>
+            {view === "bots" && workspace.bots.length > 0 && (
+              <label className="search-box">
+                <Search size={17} />
+                <input
+                  type="text"
+                  placeholder="Search bots by name, category, or description…"
+                  value={botSearch}
+                  onChange={(e) => setBotSearch(e.target.value)}
+                  aria-label="Search bots"
+                />
+                {botSearch && (
+                  <button
+                    type="button"
+                    className="search-box-clear"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setBotSearch("");
+                    }}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </label>
+            )}
             {view === "bots" && (
               <div className="bot-category-filter-bar">
                 <button
@@ -3077,7 +3130,23 @@ export default function Home() {
                   placeholder="Search conversations, topics, or messages…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Search conversations"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    className="search-box-clear"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSearch("");
+                    }}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </label>
             )}
             {view === "history" ? (
@@ -3120,52 +3189,79 @@ export default function Home() {
                   });
                 })()}
               </div>
-            ) : (
-              <div className="library-grid">
-                {(selectedCategoryFilter === "All"
-                  ? workspace.bots
-                  : workspace.bots.filter(
-                      (b) => (b.category?.trim() || "General") === selectedCategoryFilter
-                    )
-                ).map((b) => (
-                  <article className="bot-card" key={b.id}>
-                    <div className="card-top-row">
-                      <span className={`large-bot ${b.color}`}>{b.symbol}</span>
-                      <div className="card-actions">
-                        <button
-                          type="button"
-                          className={`card-default-pill ${b.id === defaultBotId ? "active" : ""}`}
-                          onClick={() => setDefaultBot(b.id)}
-                          title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
-                          aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
-                        >
-                          <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
-                          <span>{b.id === defaultBotId ? "Default" : "Set default"}</span>
-                        </button>
-                        <button
-                          className="card-settings icon-button"
-                          aria-label={`Edit ${b.name}`}
-                          onClick={() => setEditor({ ...b })}
-                        >
-                          <Settings2 size={17} />
-                        </button>
+            ) : view === "bots" && workspace.bots.length > 0 ? (
+              filteredLibraryBots.length === 0 ? (
+                <div className="library-empty">
+                  <Search size={40} />
+                  <h2>No matching bots found.</h2>
+                  <p>
+                    {selectedCategoryFilter !== "All"
+                      ? `No bots match "${botSearch.trim()}" in "${selectedCategoryFilter}".`
+                      : `No bots match "${botSearch.trim()}". Try searching for a different keyword or name.`}
+                  </p>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "12px" }}>
+                    {selectedCategoryFilter !== "All" && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setSelectedCategoryFilter("All")}
+                      >
+                        Search across all categories
+                      </button>
+                    )}
+                    {botSearch.trim() && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setBotSearch("")}
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="library-grid">
+                  {filteredLibraryBots.map((b) => (
+                    <article className="bot-card" key={b.id}>
+                      <div className="card-top-row">
+                        <span className={`large-bot ${b.color}`}>{b.symbol}</span>
+                        <div className="card-actions">
+                          <button
+                            type="button"
+                            className={`card-default-pill ${b.id === defaultBotId ? "active" : ""}`}
+                            onClick={() => setDefaultBot(b.id)}
+                            title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
+                            aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+                          >
+                            <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+                            <span>{b.id === defaultBotId ? "Default" : "Set default"}</span>
+                          </button>
+                          <button
+                            className="card-settings icon-button"
+                            aria-label={`Edit ${b.name}`}
+                            onClick={() => setEditor({ ...b })}
+                          >
+                            <Settings2 size={17} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <h2>{b.name}</h2>
-                    <span className="bot-card-category-badge">{b.category || "General"}</span>
-                    <p>{b.description}</p>
-                    <span className="model-pill">{b.model}</span>
-                    <button
-                      className="card-chat"
-                      disabled={busy}
-                      onClick={() => newChat(b.id)}
-                    >
-                      Start a conversation <ArrowUpRight size={16} />
-                    </button>
-                  </article>
-                ))}
-              </div>
-            )}
+                      <h2>{b.name}</h2>
+                      <span className="bot-card-category-badge">{b.category || "General"}</span>
+                      <p>{b.description}</p>
+                      <span className="model-pill">{b.model}</span>
+                      <button
+                        className="card-chat"
+                        disabled={busy}
+                        onClick={() => newChat(b.id)}
+                      >
+                        Start a conversation <ArrowUpRight size={16} />
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )
+            ) : null}
             {view === "bots" && !workspace.bots.length && (
               <div className="library-empty">
                 <Layers3 size={40} />
