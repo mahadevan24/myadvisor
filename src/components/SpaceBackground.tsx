@@ -53,140 +53,62 @@ interface MoonState {
   nextAppearanceTime: number;
 }
 
-// Procedurally generate a detailed, realistic offscreen Moon canvas
-function createOffscreenMoon(radius: number): HTMLCanvasElement {
-  const size = Math.ceil(radius * 4); // Extra margin for soft lunar corona / glow
+// Render authentic, photorealistic Earth Moon with real craters and maria
+function createOffscreenMoon(radius: number, moonImg: HTMLImageElement | null): HTMLCanvasElement {
+  const pixelSize = Math.ceil(radius * 8); // High-DPI canvas for crisp craters and details
   const mCanvas = document.createElement("canvas");
-  mCanvas.width = size;
-  mCanvas.height = size;
+  mCanvas.width = pixelSize;
+  mCanvas.height = pixelSize;
   const mCtx = mCanvas.getContext("2d");
   if (!mCtx) return mCanvas;
 
-  const cx = size / 2;
-  const cy = size / 2;
+  const cx = pixelSize / 2;
+  const cy = pixelSize / 2;
+  const r = radius * 2; // Lunar disc radius in offscreen canvas coordinates
 
   // 1. Soft lunar corona / celestial glow
-  const glow = mCtx.createRadialGradient(cx, cy, radius * 0.7, cx, cy, radius * 1.85);
-  glow.addColorStop(0, "rgba(235, 220, 205, 0.18)");
-  glow.addColorStop(0.5, "rgba(204, 120, 92, 0.06)");
+  const glow = mCtx.createRadialGradient(cx, cy, r * 0.75, cx, cy, r * 1.6);
+  glow.addColorStop(0, "rgba(225, 235, 250, 0.15)");
+  glow.addColorStop(0.4, "rgba(204, 120, 92, 0.04)");
   glow.addColorStop(1, "rgba(0, 0, 0, 0)");
   mCtx.fillStyle = glow;
   mCtx.beginPath();
-  mCtx.arc(cx, cy, radius * 1.85, 0, Math.PI * 2);
+  mCtx.arc(cx, cy, r * 1.6, 0, Math.PI * 2);
   mCtx.fill();
 
-  // 2. Clip to moon disc for surface details
+  // 2. Render authentic Earth Moon
   mCtx.save();
   mCtx.beginPath();
-  mCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+  mCtx.arc(cx, cy, r, 0, Math.PI * 2);
   mCtx.clip();
 
-  // 3. Base spherical body gradient (simulating sunlight from upper-left)
-  const sunX = cx - radius * 0.45;
-  const sunY = cy - radius * 0.45;
-  const baseGrad = mCtx.createRadialGradient(sunX, sunY, radius * 0.1, cx, cy, radius * 1.15);
-  baseGrad.addColorStop(0, "#f3f5fa"); // Sunlit highlight
-  baseGrad.addColorStop(0.45, "#d2d7e4"); // Midtone regolith
-  baseGrad.addColorStop(0.75, "#8e95a5"); // Penumbra
-  baseGrad.addColorStop(1, "#363a48"); // Shadowed limb
-  mCtx.fillStyle = baseGrad;
-  mCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  if (moonImg && moonImg.complete && moonImg.naturalWidth > 0) {
+    // Photorealistic Earth Moon with real craters (Tycho, Copernicus, Kepler, Aristarchus) and maria
+    mCtx.imageSmoothingEnabled = true;
+    mCtx.imageSmoothingQuality = "high";
+    mCtx.drawImage(moonImg, cx - r, cy - r, r * 2, r * 2);
 
-  // 4. Lunar Maria (dark basaltic volcanic plains)
-  const mariaData = [
-    { x: -0.22, y: -0.2, rx: 0.32, ry: 0.28, rot: 0.2 }, // Mare Imbrium
-    { x: -0.4, y: 0.05, rx: 0.3, ry: 0.4, rot: -0.3 }, // Oceanus Procellarum
-    { x: 0.25, y: -0.25, rx: 0.22, ry: 0.2, rot: 0.1 }, // Mare Serenitatis
-    { x: 0.32, y: 0.02, rx: 0.24, ry: 0.22, rot: -0.1 }, // Mare Tranquillitatis
-    { x: 0.52, y: -0.15, rx: 0.16, ry: 0.14, rot: 0.2 }, // Mare Crisium
-    { x: 0.15, y: 0.28, rx: 0.28, ry: 0.18, rot: 0.15 }, // Mare Fecunditatis
-  ];
-
-  mCtx.fillStyle = "rgba(65, 70, 85, 0.38)";
-  mariaData.forEach((m) => {
-    mCtx.save();
-    mCtx.translate(cx + m.x * radius, cy + m.y * radius);
-    mCtx.rotate(m.rot);
+    // Subtle 3D spherical limb darkening for authentic globe depth
+    const limbGrad = mCtx.createRadialGradient(cx, cy, r * 0.72, cx, cy, r);
+    limbGrad.addColorStop(0, "rgba(0, 0, 0, 0)");
+    limbGrad.addColorStop(0.85, "rgba(0, 0, 0, 0.06)");
+    limbGrad.addColorStop(1, "rgba(8, 12, 18, 0.32)");
+    mCtx.fillStyle = limbGrad;
     mCtx.beginPath();
-    mCtx.ellipse(0, 0, m.rx * radius, m.ry * radius, 0, 0, Math.PI * 2);
+    mCtx.arc(cx, cy, r, 0, Math.PI * 2);
     mCtx.fill();
-    mCtx.restore();
-  });
-
-  // Secondary soft patches
-  mCtx.fillStyle = "rgba(45, 50, 65, 0.22)";
-  [
-    { x: -0.1, y: 0.18, r: radius * 0.18 },
-    { x: 0.05, y: -0.05, r: radius * 0.14 },
-    { x: 0.38, y: 0.22, r: radius * 0.12 },
-  ].forEach((p) => {
-    mCtx.beginPath();
-    mCtx.arc(cx + p.x, cy + p.y, p.r, 0, Math.PI * 2);
-    mCtx.fill();
-  });
-
-  // 5. Prominent impact craters (Tycho, Copernicus, Kepler, Aristarchus)
-  const craters = [
-    { x: 0.05, y: 0.52, r: radius * 0.07, ray: true }, // Tycho with ray system
-    { x: -0.18, y: -0.08, r: radius * 0.065, ray: true }, // Copernicus
-    { x: -0.38, y: -0.04, r: radius * 0.045, ray: false }, // Kepler
-    { x: -0.44, y: -0.22, r: radius * 0.038, ray: false }, // Aristarchus
-    { x: 0.28, y: 0.44, r: radius * 0.05, ray: false },
-  ];
-
-  craters.forEach((c) => {
-    const px = cx + c.x * radius;
-    const py = cy + c.y * radius;
-
-    // Ray system (faint bright ejecta streaks)
-    if (c.ray) {
-      mCtx.strokeStyle = "rgba(245, 248, 255, 0.18)";
-      mCtx.lineWidth = 1;
-      for (let a = 0; a < 6; a++) {
-        const ang = (a * Math.PI) / 3 + 0.2;
-        mCtx.beginPath();
-        mCtx.moveTo(px, py);
-        mCtx.lineTo(px + Math.cos(ang) * radius * 0.35, py + Math.sin(ang) * radius * 0.35);
-        mCtx.stroke();
-      }
-    }
-
-    // Crater depression shadow
-    mCtx.fillStyle = "rgba(25, 28, 38, 0.55)";
-    mCtx.beginPath();
-    mCtx.arc(px, py, c.r, 0, Math.PI * 2);
-    mCtx.fill();
-
-    // Illuminated crater rim
-    mCtx.strokeStyle = "rgba(255, 255, 255, 0.65)";
-    mCtx.lineWidth = Math.max(1, radius * 0.02);
-    mCtx.beginPath();
-    mCtx.arc(px, py, c.r, Math.PI * 0.75, Math.PI * 1.75);
-    mCtx.stroke();
-  });
-
-  // 6. 3D Waxing Gibbous Terminator Shadow
-  const shadowGrad = mCtx.createRadialGradient(
-    cx + radius * 0.65,
-    cy + radius * 0.65,
-    radius * 0.2,
-    cx + radius * 0.3,
-    cy + radius * 0.3,
-    radius * 1.15
-  );
-  shadowGrad.addColorStop(0, "rgba(10, 12, 18, 0.88)"); // Dark side
-  shadowGrad.addColorStop(0.55, "rgba(20, 24, 34, 0.5)"); // Terminator gradient
-  shadowGrad.addColorStop(1, "rgba(0, 0, 0, 0)"); // Illuminated face
-  mCtx.fillStyle = shadowGrad;
-  mCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
-
-  // Subtle illuminated limb highlight
-  const limbGrad = mCtx.createRadialGradient(sunX, sunY, radius * 0.9, sunX, sunY, radius * 1.02);
-  limbGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
-  limbGrad.addColorStop(0.8, "rgba(240, 248, 255, 0.35)");
-  limbGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
-  mCtx.fillStyle = limbGrad;
-  mCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  } else {
+    // Elegant temporary fallback while image loads
+    const sunX = cx - r * 0.45;
+    const sunY = cy - r * 0.45;
+    const baseGrad = mCtx.createRadialGradient(sunX, sunY, r * 0.1, cx, cy, r * 1.15);
+    baseGrad.addColorStop(0, "#eceff4");
+    baseGrad.addColorStop(0.5, "#cbd2dc");
+    baseGrad.addColorStop(0.85, "#808796");
+    baseGrad.addColorStop(1, "#2e323d");
+    mCtx.fillStyle = baseGrad;
+    mCtx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  }
 
   mCtx.restore();
 
@@ -229,6 +151,14 @@ export default function SpaceBackground() {
     // Orbiting Moon
     const moonRadius = 46;
     let offscreenMoon: HTMLCanvasElement | null = null;
+    const moonImg = typeof window !== "undefined" ? new Image() : null;
+    if (moonImg) {
+      moonImg.src = "/moon.png";
+      moonImg.onload = () => {
+        offscreenMoon = createOffscreenMoon(moonRadius, moonImg);
+      };
+    }
+
     let moon: MoonState = {
       active: false,
       x: -moonRadius * 2,
@@ -269,7 +199,7 @@ export default function SpaceBackground() {
       canvas.style.height = `${height}px`;
 
       ctx!.scale(dpr, dpr);
-      offscreenMoon = createOffscreenMoon(moonRadius);
+      offscreenMoon = createOffscreenMoon(moonRadius, moonImg && moonImg.complete ? moonImg : null);
       initStars();
     }
 
