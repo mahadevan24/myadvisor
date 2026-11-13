@@ -26,6 +26,7 @@ import {
   type TodoAction,
 } from "../src/lib/memory";
 import { readStream } from "../src/lib/stream";
+import { filterBotsByQuery, calculateDropdownPosition, CURATED_BOTS } from "../src/lib/curated-bots";
 const chat: Chat = {
   id: "c",
   botId: "nova",
@@ -676,4 +677,87 @@ test("buildContext includes checklist context, instructions, and persona guideli
   assert.ok(sys.includes("Elon Musk"));
   assert.ok(sys.includes("Osho"));
   assert.ok(sys.includes("<todo_action action="));
+});
+
+test("calculateDropdownPosition prevents overflowing top and clamps height to safe area", () => {
+  // Scenario 1: Short viewport (300px), composer at bottom (rectTop: 240, rectBottom: 280), header at 50px
+  // In the user's issue, the dialog was overflowing the top of the viewport because space was miscalculated
+  const shortResult = calculateDropdownPosition({
+    rectTop: 240,
+    rectBottom: 280,
+    headerBottom: 50,
+    windowHeight: 300,
+  });
+
+  // safeSpaceAbove = 240 - 8 - (50 + 10) = 172
+  // safeSpaceBelow = (300 - 16) - (280 + 8) = -4 -> 0
+  // Direction must be up, and maxHeight must not exceed safeSpaceAbove (172)
+  assert.equal(shortResult.direction, "up");
+  assert.ok(shortResult.maxHeight <= 172, `maxHeight ${shortResult.maxHeight} should be <= 172`);
+  // Top edge of dropdown in viewport = (rectTop - 8) - maxHeight = 232 - maxHeight
+  // It must strictly be >= headerBottom + 10 (60)
+  const topEdge = 240 - 8 - shortResult.maxHeight;
+  assert.ok(topEdge >= 60, `topEdge ${topEdge} should be >= safe top boundary 60`);
+
+  // Scenario 2: Normal tall viewport (800px), composer at bottom (rectTop: 720, rectBottom: 760)
+  const tallResult = calculateDropdownPosition({
+    rectTop: 720,
+    rectBottom: 760,
+    headerBottom: 50,
+    windowHeight: 800,
+  });
+  assert.equal(tallResult.direction, "up");
+  assert.ok(tallResult.maxHeight <= 380);
+  assert.ok(720 - 8 - tallResult.maxHeight >= 60);
+
+  // Scenario 3: Composer near top of screen (rectTop: 100, rectBottom: 140, windowHeight: 800)
+  // Space above is cramped, space below is abundant -> should drop down
+  const downResult = calculateDropdownPosition({
+    rectTop: 100,
+    rectBottom: 140,
+    headerBottom: 50,
+    windowHeight: 800,
+  });
+  assert.equal(downResult.direction, "down");
+  assert.ok(downResult.maxHeight <= 380);
+  // Bottom edge = rectBottom + 8 + maxHeight <= windowHeight - 16
+  assert.ok(140 + 8 + downResult.maxHeight <= 800 - 16);
+});
+
+test("filterBotsByQuery filters by bot name, description, category, and model", () => {
+  const grouped: Record<string, Bot[]> = {
+    "Business and entrepreneurship": [
+      CURATED_BOTS.find((b) => b.id === "steve-jobs")!,
+      CURATED_BOTS.find((b) => b.id === "jeff-bezos")!,
+      CURATED_BOTS.find((b) => b.id === "elon-musk")!,
+    ],
+    "Spirituality": [
+      CURATED_BOTS.find((b) => b.id === "osho")!,
+      CURATED_BOTS.find((b) => b.id === "eckhart-tolle")!,
+    ],
+  };
+
+  // Empty query returns all bots grouped
+  const all = filterBotsByQuery(grouped, "");
+  assert.equal(Object.keys(all).length, 2);
+
+  // Search by bot name (case-insensitive)
+  const jobs = filterBotsByQuery(grouped, "steve");
+  assert.equal(Object.keys(jobs).length, 1);
+  assert.equal(jobs["Business and entrepreneurship"].length, 1);
+  assert.equal(jobs["Business and entrepreneurship"][0].name, "Steve Jobs");
+
+  // Search by category name
+  const spirit = filterBotsByQuery(grouped, "spirituality");
+  assert.equal(Object.keys(spirit).length, 1);
+  assert.equal(spirit["Spirituality"].length, 2);
+
+  // Search by bot description
+  const now = filterBotsByQuery(grouped, "inner stillness");
+  assert.equal(Object.keys(now).length, 1);
+  assert.equal(now["Spirituality"][0].name, "Eckhart Tolle");
+
+  // Search with no match
+  const none = filterBotsByQuery(grouped, "nonexistentxyz123");
+  assert.equal(Object.keys(none).length, 0);
 });

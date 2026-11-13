@@ -39,7 +39,12 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BOT_CATEGORIES, CURATED_BOTS } from "@/lib/curated-bots";
+import {
+  BOT_CATEGORIES,
+  CURATED_BOTS,
+  calculateDropdownPosition,
+  filterBotsByQuery,
+} from "@/lib/curated-bots";
 import {
   Attachment,
   Bot,
@@ -420,6 +425,64 @@ export default function Home() {
     }
     return "nova";
   });
+  const [recentBotIds, setRecentBotIds] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("myadvisor.recentBotIds.v1");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) return parsed.filter((id) => typeof id === "string");
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (!botId) return;
+    setRecentBotIds((prev) => {
+      const next = [botId, ...prev.filter((id) => id !== botId)].slice(0, 10);
+      try {
+        localStorage.setItem("myadvisor.recentBotIds.v1", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, [botId]);
+
+  const recentBots = useMemo(() => {
+    const candidateIds: string[] = [];
+    if (botId) candidateIds.push(botId);
+    for (const id of recentBotIds) {
+      if (!candidateIds.includes(id)) candidateIds.push(id);
+    }
+    const sortedChats = [...workspace.chats].sort(
+      (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+    );
+    for (const c of sortedChats) {
+      if (c.botId && !candidateIds.includes(c.botId)) {
+        candidateIds.push(c.botId);
+      }
+    }
+    if (defaultBotId && !candidateIds.includes(defaultBotId)) {
+      candidateIds.push(defaultBotId);
+    }
+    for (const b of workspace.bots) {
+      if (!candidateIds.includes(b.id)) {
+        candidateIds.push(b.id);
+      }
+    }
+
+    const result: Bot[] = [];
+    for (const id of candidateIds) {
+      const found = workspace.bots.find((b) => b.id === id);
+      if (found && !result.some((b) => b.id === found.id)) {
+        result.push(found);
+        if (result.length >= 3) break;
+      }
+    }
+    return result;
+  }, [botId, recentBotIds, workspace.chats, defaultBotId, workspace.bots]);
+
   function setDefaultBot(id: string) {
     setDefaultBotId(id);
     try {
@@ -485,28 +548,14 @@ export default function Home() {
     const rect = botPickerRef.current.getBoundingClientRect();
     const headerEl = document.querySelector(".chat-top-header, .topbar");
     const headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 0;
-    const topSafeEdge = Math.max(headerBottom + 10, 16);
-    const bottomSafeEdge = window.innerHeight - 16;
-
-    const safeSpaceAbove = Math.max(0, rect.top - 8 - topSafeEdge);
-    const safeSpaceBelow = Math.max(0, bottomSafeEdge - (rect.bottom + 8));
-
-    let direction: "up" | "down" = "up";
-    let calculatedMaxHeight = 320;
-
-    if (safeSpaceAbove < 180 && safeSpaceBelow > safeSpaceAbove) {
-      direction = "down";
-      calculatedMaxHeight = Math.max(120, Math.min(380, safeSpaceBelow));
-    } else if (safeSpaceAbove >= safeSpaceBelow) {
-      direction = "up";
-      calculatedMaxHeight = Math.max(120, Math.min(380, safeSpaceAbove));
-    } else {
-      direction = "down";
-      calculatedMaxHeight = Math.max(120, Math.min(380, safeSpaceBelow));
-    }
-
-    setDropDirection(direction);
-    setMaxDropHeight(calculatedMaxHeight);
+    const pos = calculateDropdownPosition({
+      rectTop: rect.top,
+      rectBottom: rect.bottom,
+      headerBottom,
+      windowHeight: window.innerHeight,
+    });
+    setDropDirection(pos.direction);
+    setMaxDropHeight(pos.maxHeight);
   };
 
   function toggleBotPicker() {
@@ -563,26 +612,10 @@ export default function Home() {
     return groups;
   }, [workspace.bots]);
 
-  const filteredDropdownBots = useMemo(() => {
-    const q = botPickerSearch.trim().toLowerCase();
-    if (!q) return groupedBots;
-    const filtered: Record<string, Bot[]> = {};
-    for (const [cat, botsInCat] of Object.entries(groupedBots)) {
-      const catMatches = cat.toLowerCase().includes(q);
-      const matchingBots = botsInCat.filter(
-        (b) =>
-          catMatches ||
-          b.name.toLowerCase().includes(q) ||
-          (b.description && b.description.toLowerCase().includes(q)) ||
-          (b.category && b.category.toLowerCase().includes(q)) ||
-          (b.model && b.model.toLowerCase().includes(q))
-      );
-      if (matchingBots.length > 0) {
-        filtered[cat] = matchingBots;
-      }
-    }
-    return filtered;
-  }, [groupedBots, botPickerSearch]);
+  const filteredDropdownBots = useMemo(
+    () => filterBotsByQuery(groupedBots, botPickerSearch),
+    [groupedBots, botPickerSearch]
+  );
 
   function importBotsList(botsToImport: Bot[]) {
     try {
@@ -2020,6 +2053,13 @@ export default function Home() {
     };
 
     setWorkspace(updatedWorkspace);
+    setRecentBotIds((prev) => {
+      const next = prev.filter((id) => id !== target.id);
+      try {
+        localStorage.setItem("myadvisor.recentBotIds.v1", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     try {
       const uidKey = cloudUid || localStorage.getItem("myadvisor.lastUid") || "guest";
@@ -2438,79 +2478,41 @@ export default function Home() {
               {n.id === "history" && (
                 <span className="count">{workspace.chats.length}</span>
               )}
+              {n.id === "bots" && (
+                <span className="count">{workspace.bots.length}</span>
+              )}
             </button>
           ))}
         </nav>
-        <div className="nav-label bot-label">
-          YOUR BOTS{" "}
-          <div className="bot-label-actions">
-            <button
-              aria-label="Import bots"
-              title="Import bots from JSON"
-              onClick={() => {
-                setImportModalOpen(true);
-                closeSidebarOnMobile();
-              }}
-            >
-              <Upload size={14} />
-            </button>
-            <button
-              aria-label="Create bot"
-              title="Create new bot"
-              onClick={() => {
-                setEditor({
-                  id: uid(),
-                  name: "",
-                  category: "Business and entrepreneurship",
-                  description: "",
-                  instructions: "",
-                  model: "openai/gpt-4o-mini",
-                  color: "mint",
-                  symbol: "✳",
-                });
-                closeSidebarOnMobile();
-              }}
-            >
-              <Plus size={15} />
-            </button>
-          </div>
-        </div>
-        <div className="sidebar-bots-scroll">
-          {Object.entries(groupedBots).map(([cat, botsInCat]) => (
-            <div key={cat} className="sidebar-bot-category">
-              <div className="sidebar-category-header">
-                <span className="sidebar-category-title">{cat}</span>
-                <span className="sidebar-category-count">{botsInCat.length}</span>
-              </div>
-              {botsInCat.map((b) => (
-                <div key={b.id} className="bot-nav-row">
-                  <button
-                    disabled={busy}
-                    onClick={() => {
-                      newChat(b.id);
-                      closeSidebarOnMobile();
-                    }}
-                    className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
-                    title={`${b.name} (${cat})`}
-                  >
-                    <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-                    <span className="bot-nav-text">{b.name}</span>
-                    <span className="online-dot" />
-                  </button>
-                  <button
-                    type="button"
-                    className={`bot-default-star ${b.id === defaultBotId ? "active" : ""}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDefaultBot(b.id);
-                    }}
-                    title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
-                    aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
-                  >
-                    <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
-                  </button>
-                </div>
-              ))}
+        <div className="nav-label">QUICK ACCESS</div>
+        <div className="sidebar-quick-bots">
+          {recentBots.map((b) => (
+            <div key={b.id} className="bot-nav-row">
+              <button
+                disabled={busy}
+                onClick={() => {
+                  newChat(b.id);
+                  closeSidebarOnMobile();
+                }}
+                className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
+                title={b.name}
+              >
+                <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                <span className="bot-nav-text">{b.name}</span>
+                <span className="online-dot" />
+              </button>
+              <button
+                type="button"
+                className={`bot-default-star ${b.id === defaultBotId ? "active" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDefaultBot(b.id);
+                }}
+                title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
+                aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
+              >
+                <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
+              </button>
             </div>
           ))}
         </div>
