@@ -69,9 +69,11 @@ export type Workspace = {
   entries: Entry[];
   todos?: Todo[];
   defaultBotId?: string;
+  deletedBotIds?: string[];
 };
 export const initialWorkspace: Workspace = {
   defaultBotId: "nova",
+  deletedBotIds: [],
   bots: [
     {
       id: "nova",
@@ -734,16 +736,21 @@ export function isCuratedBot(bot: Bot | { id?: string; name?: string }): boolean
   return false;
 }
 
-export function mergeBots(primary: Bot[], secondary: Bot[]): Bot[] {
+export function mergeBots(
+  primary: Bot[],
+  secondary: Bot[],
+  deletedBotIds: string[] | Set<string> = [],
+): Bot[] {
+  const deleted = deletedBotIds instanceof Set ? deletedBotIds : new Set(deletedBotIds || []);
   const map = new Map<string, Bot>();
   for (const b of primary || []) {
-    if (b && b.id) {
+    if (b && b.id && !deleted.has(b.id)) {
       map.set(b.id, b);
       if (b.name) map.set(`name:${b.name.toLowerCase().trim()}`, b);
     }
   }
   for (const b of secondary || []) {
-    if (!b || !b.id) continue;
+    if (!b || !b.id || deleted.has(b.id)) continue;
     const existingById = map.get(b.id);
     const existingByName = b.name ? map.get(`name:${b.name.toLowerCase().trim()}`) : undefined;
     const existing = existingById || existingByName;
@@ -763,13 +770,14 @@ export function mergeBots(primary: Bot[], secondary: Bot[]): Bot[] {
   const result: Bot[] = [];
   const seenIds = new Set<string>();
   for (const b of map.values()) {
-    if (!seenIds.has(b.id)) {
+    if (!seenIds.has(b.id) && !deleted.has(b.id)) {
       seenIds.add(b.id);
       result.push(b);
     }
   }
-  // Ensure default curated bots are included if missing
+  // Ensure default curated bots are included if missing AND NOT explicitly deleted
   for (const defaultBot of initialWorkspace.bots) {
+    if (deleted.has(defaultBot.id)) continue;
     const hasId = seenIds.has(defaultBot.id);
     const hasName = defaultBot.name && result.some((r) => r.name.toLowerCase().trim() === defaultBot.name.toLowerCase().trim());
     if (!hasId && !hasName) {

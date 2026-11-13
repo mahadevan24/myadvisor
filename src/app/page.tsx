@@ -207,10 +207,18 @@ const fallbackQuickPrompts = (bot: Bot): QuickPrompt[] => {
   ];
 };
 
-function recoverCustomBots(): Bot[] {
+function recoverCustomBots(deletedIds?: Set<string>): Bot[] {
   if (typeof window === "undefined") return [];
   const customBots: Bot[] = [];
   const seenKeys = new Set<string>();
+
+  let deletedSet = deletedIds;
+  if (!deletedSet) {
+    try {
+      const raw = localStorage.getItem("myadvisor.deletedBotIds");
+      if (raw) deletedSet = new Set(JSON.parse(raw));
+    } catch {}
+  }
 
   const checkList = (list: any[]) => {
     if (!Array.isArray(list)) return;
@@ -219,6 +227,7 @@ function recoverCustomBots(): Bot[] {
         const id = typeof item.id === "string" ? item.id.trim() : "";
         const name = item.name.trim();
         const key = (id || name).toLowerCase();
+        if (id && deletedSet?.has(id)) continue;
         if (!isCuratedBot(item) && !seenKeys.has(key)) {
           seenKeys.add(key);
           customBots.push({
@@ -265,8 +274,38 @@ function recoverCustomBots(): Bot[] {
 function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid: string } | null {
   if (typeof window === "undefined") return null;
   try {
-    const recovered = recoverCustomBots();
+    const rawDeleted = localStorage.getItem("myadvisor.deletedBotIds");
+    const storedDeleted: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
     const lastUid = preferredUid || localStorage.getItem("myadvisor.lastUid");
+
+    const processWorkspace = (data: any, uid: string): Workspace => {
+      const allDeleted = Array.from(
+        new Set([...(Array.isArray(data.deletedBotIds) ? data.deletedBotIds : []), ...storedDeleted]),
+      );
+      if (Array.isArray(data.bots) && data.bots.length > 0) {
+        for (const defaultBot of initialWorkspace.bots) {
+          const exists = data.bots.some((b: any) => b.id === defaultBot.id || (b.name && b.name.toLowerCase().trim() === defaultBot.name.toLowerCase().trim()));
+          if (!exists && !allDeleted.includes(defaultBot.id)) {
+            allDeleted.push(defaultBot.id);
+          }
+        }
+      }
+      const deletedSet = new Set(allDeleted);
+      const recovered = recoverCustomBots(deletedSet);
+      data.deletedBotIds = allDeleted;
+      data.bots = mergeBots(data.bots, recovered, deletedSet);
+      data.todos = Array.isArray(data.todos) ? data.todos : [];
+      if (!data.defaultBotId) {
+        const candidate = localStorage.getItem("myadvisor.defaultBotId");
+        if (candidate && data.bots.some((b: Bot) => b.id === candidate)) {
+          data.defaultBotId = candidate;
+        } else if (data.bots[0]?.id) {
+          data.defaultBotId = data.bots[0].id;
+        }
+      }
+      return data as Workspace;
+    };
+
     if (lastUid) {
       const saved = localStorage.getItem(`myadvisor.workspace.v1.${lastUid}`);
       if (saved) {
@@ -276,9 +315,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
           Array.isArray(data.chats) &&
           Array.isArray(data.entries)
         ) {
-          data.bots = mergeBots(data.bots, recovered);
-          data.todos = Array.isArray(data.todos) ? data.todos : [];
-          return { workspace: data, uid: lastUid };
+          return { workspace: processWorkspace(data, lastUid), uid: lastUid };
         }
       }
     }
@@ -302,9 +339,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
               try {
                 localStorage.setItem("myadvisor.lastUid", foundUid);
               } catch {}
-              data.bots = mergeBots(data.bots, recovered);
-              data.todos = Array.isArray(data.todos) ? data.todos : [];
-              return { workspace: data, uid: foundUid };
+              return { workspace: processWorkspace(data, foundUid), uid: foundUid };
             }
           }
         }
@@ -320,14 +355,15 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
         Array.isArray(data.chats) &&
         Array.isArray(data.entries)
       ) {
-        data.bots = mergeBots(data.bots, recovered);
-        data.todos = Array.isArray(data.todos) ? data.todos : [];
-        return { workspace: data, uid: lastUid || "guest" };
+        return { workspace: processWorkspace(data, lastUid || "guest"), uid: lastUid || "guest" };
       }
     }
+    const deletedSet = new Set(storedDeleted);
+    const recovered = recoverCustomBots(deletedSet);
     if (recovered.length > 0) {
+      const bots = mergeBots(initialWorkspace.bots, recovered, deletedSet);
       return {
-        workspace: { ...initialWorkspace, bots: mergeBots(initialWorkspace.bots, recovered) },
+        workspace: { ...initialWorkspace, bots, deletedBotIds: storedDeleted },
         uid: lastUid || "guest",
       };
     }
@@ -363,7 +399,7 @@ export default function Home() {
           return candidate;
         }
         if (cached?.workspace.bots[0]?.id) return cached.workspace.bots[0].id;
-        return localStorage.getItem("myadvisor.defaultBotId") || "nova";
+        return "nova";
       } catch {}
     }
     return "nova";
@@ -377,7 +413,7 @@ export default function Home() {
           return candidate;
         }
         if (cached?.workspace.bots[0]?.id) return cached.workspace.bots[0].id;
-        return localStorage.getItem("myadvisor.defaultBotId") || "nova";
+        return "nova";
       } catch {}
     }
     return "nova";
@@ -387,7 +423,23 @@ export default function Home() {
     try {
       localStorage.setItem("myadvisor.defaultBotId", id);
     } catch {}
-    setWorkspace((current) => ({ ...current, defaultBotId: id }));
+    setWorkspace((current) => {
+      const updated = { ...current, defaultBotId: id };
+      try {
+        const uidKey = cloudUid || localStorage.getItem("myadvisor.lastUid") || "guest";
+        localStorage.setItem(
+          `myadvisor.workspace.v1.${uidKey}`,
+          JSON.stringify(updated),
+        );
+      } catch {}
+      if (cloudUid) {
+        setSync("Syncing…");
+        void saveCloud(cloudUid, updated)
+          .then(() => setSync("Cloud synced"))
+          .catch(() => setSync("Sync failed"));
+      }
+      return updated;
+    });
   }
   const [chatId, setChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -1015,16 +1067,46 @@ export default function Home() {
         setEncryptedUnlockData({ uid, rawData: (result as any).rawEncryptedData });
         return;
       }
-      const recovered = recoverCustomBots();
+      const rawDeleted = localStorage.getItem("myadvisor.deletedBotIds");
+      const localDeleted: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
+      const allDeleted = Array.from(
+        new Set([...(saved?.deletedBotIds || []), ...localDeleted]),
+      );
+      if (saved && Array.isArray(saved.bots) && saved.bots.length > 0) {
+        for (const defaultBot of initialWorkspace.bots) {
+          const exists = saved.bots.some((b: any) => b.id === defaultBot.id || (b.name && b.name.toLowerCase().trim() === defaultBot.name.toLowerCase().trim()));
+          if (!exists && !allDeleted.includes(defaultBot.id)) {
+            allDeleted.push(defaultBot.id);
+          }
+        }
+      }
+      const deletedSet = new Set(allDeleted);
+      const recovered = recoverCustomBots(deletedSet);
       if (saved) {
         setWorkspace((current) => {
-          const mergedBots = mergeBots(saved.bots, mergeBots(current.bots, recovered));
-          const mergedWorkspace: Workspace = { ...saved, bots: mergedBots };
-          const targetDefault = mergedWorkspace.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
-          if (targetDefault && mergedWorkspace.bots.some((b: Bot) => b.id === targetDefault)) {
-            setDefaultBotId(targetDefault);
-            setBotId(targetDefault);
-          }
+          const guestCustomBots = (current.bots || []).filter(
+            (b) => !isCuratedBot(b) && !deletedSet.has(b.id) && !saved.bots.some((sb) => sb.id === b.id)
+          );
+          const mergedBots = mergeBots(saved.bots, [...guestCustomBots, ...recovered], deletedSet);
+          const targetDefault = (saved.defaultBotId && mergedBots.some((b: Bot) => b.id === saved.defaultBotId))
+            ? saved.defaultBotId
+            : (localStorage.getItem("myadvisor.defaultBotId") && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
+              ? localStorage.getItem("myadvisor.defaultBotId")!
+              : (mergedBots[0]?.id || "nova");
+
+          setDefaultBotId(targetDefault);
+          setBotId(targetDefault);
+          try {
+            localStorage.setItem("myadvisor.defaultBotId", targetDefault);
+            localStorage.setItem("myadvisor.deletedBotIds", JSON.stringify(allDeleted));
+          } catch {}
+
+          const mergedWorkspace: Workspace = {
+            ...saved,
+            bots: mergedBots,
+            defaultBotId: targetDefault,
+            deletedBotIds: allDeleted,
+          };
           try {
             localStorage.setItem(`myadvisor.workspace.v1.${uid}`, JSON.stringify(mergedWorkspace));
             localStorage.setItem("myadvisor.customBots.v1", JSON.stringify(mergedBots.filter((b) => !isCuratedBot(b))));
@@ -1034,8 +1116,26 @@ export default function Home() {
         });
       } else {
         setWorkspace((current) => {
-          const mergedBots = mergeBots(current.bots, recovered);
-          const updated = { ...current, bots: mergedBots };
+          const mergedBots = mergeBots(current.bots, recovered, deletedSet);
+          const targetDefault = (current.defaultBotId && mergedBots.some((b: Bot) => b.id === current.defaultBotId))
+            ? current.defaultBotId
+            : (localStorage.getItem("myadvisor.defaultBotId") && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
+              ? localStorage.getItem("myadvisor.defaultBotId")!
+              : (mergedBots[0]?.id || "nova");
+
+          setDefaultBotId(targetDefault);
+          setBotId(targetDefault);
+          try {
+            localStorage.setItem("myadvisor.defaultBotId", targetDefault);
+            localStorage.setItem("myadvisor.deletedBotIds", JSON.stringify(allDeleted));
+          } catch {}
+
+          const updated: Workspace = {
+            ...current,
+            bots: mergedBots,
+            defaultBotId: targetDefault,
+            deletedBotIds: allDeleted,
+          };
           if (updated.bots.length > 0) {
             void saveCloud(uid, updated).catch(() => {});
           }
@@ -1120,6 +1220,9 @@ export default function Home() {
         if (targetDefault && cached.workspace.bots.some((b: Bot) => b.id === targetDefault)) {
           setDefaultBotId(targetDefault);
           setBotId(targetDefault);
+          try {
+            localStorage.setItem("myadvisor.defaultBotId", targetDefault);
+          } catch {}
         }
       }
       const savedAccount = localStorage.getItem("myadvisor.lastAccount");

@@ -15,6 +15,7 @@ import {
   encryptWorkspace,
   decryptWorkspace,
   getLocalEncryptionKey,
+  getAccountEncryptionKey,
 } from "./crypto";
 
 const config = {
@@ -56,23 +57,44 @@ export async function connectCloud(google = false, encryptionKey?: string) {
   }
 
   const rawData = snap.data().data;
-  const key = encryptionKey || getLocalEncryptionKey(uid);
-
-  try {
-    const workspace = await decryptWorkspace(rawData, key);
-    return {
-      uid,
-      workspace,
-      needsPassphrase: false,
-    };
-  } catch {
-    return {
-      uid,
-      workspace: null,
-      needsPassphrase: true,
-      rawEncryptedData: rawData,
-    };
+  const keysToTry: string[] = [];
+  if (encryptionKey && encryptionKey.trim()) {
+    keysToTry.push(encryptionKey.trim());
   }
+  const custom = typeof window !== "undefined" ? window.localStorage.getItem("myadvisor.e2ee.passphrase") : null;
+  if (custom && custom.trim() && !keysToTry.includes(custom.trim())) {
+    keysToTry.push(custom.trim());
+  }
+  const accountKey = getAccountEncryptionKey(uid);
+  if (!keysToTry.includes(accountKey)) {
+    keysToTry.push(accountKey);
+  }
+  if (typeof window !== "undefined") {
+    const legacyKey = window.localStorage.getItem(`myadvisor.e2ee.deviceKey.${uid}`);
+    if (legacyKey && legacyKey.trim() && !keysToTry.includes(legacyKey.trim())) {
+      keysToTry.push(legacyKey.trim());
+    }
+  }
+
+  for (const candidateKey of keysToTry) {
+    try {
+      const workspace = await decryptWorkspace(rawData, candidateKey);
+      return {
+        uid,
+        workspace,
+        needsPassphrase: false,
+      };
+    } catch {
+      // try next key
+    }
+  }
+
+  return {
+    uid,
+    workspace: null,
+    needsPassphrase: true,
+    rawEncryptedData: rawData,
+  };
 }
 
 export function watchAuth(callback: (user: User | null) => void) {

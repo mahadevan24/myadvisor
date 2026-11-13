@@ -141,6 +141,10 @@ export async function decryptWorkspace(
   }
 }
 
+export function getAccountEncryptionKey(uid: string): string {
+  return `myadvisor-account-vault:${uid}`;
+}
+
 export function getLocalEncryptionKey(uid?: string): string {
   if (typeof window === "undefined" || !window.localStorage) {
     return "default-server-or-test-key";
@@ -149,6 +153,15 @@ export function getLocalEncryptionKey(uid?: string): string {
   const custom = window.localStorage.getItem("myadvisor.e2ee.passphrase");
   if (custom && custom.trim()) {
     return custom.trim();
+  }
+
+  if (uid && uid !== "guest") {
+    const accountKey = getAccountEncryptionKey(uid);
+    const storageKey = `myadvisor.e2ee.deviceKey.${uid}`;
+    try {
+      window.localStorage.setItem(storageKey, accountKey);
+    } catch {}
+    return accountKey;
   }
 
   const storageKey = `myadvisor.e2ee.deviceKey.${uid || "default"}`;
