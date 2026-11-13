@@ -3,14 +3,14 @@
 import { useEffect, useRef } from "react";
 
 interface Star {
-  x: number;
-  y: number;
-  size: number;
-  baseAlpha: number;
-  twinkleSpeed: number;
-  twinklePhase: number;
-  layer: number; // 0 = distant, 1 = mid, 2 = near
-  color: string;
+  r: number; // orbital radius from celestial rotation center
+  baseAngle: number; // base angular position on celestial sphere [0, 2PI)
+  size: number; // visual radius in px (distant pinpoint starlight)
+  baseAlpha: number; // apparent luminosity
+  twinkleSpeed: number; // subtle scintillation rate
+  twinklePhase: number; // current phase
+  color: string; // stellar spectrum color
+  isAnchor: boolean; // navigational anchor star
 }
 
 interface ShootingStar {
@@ -171,20 +171,25 @@ export default function SpaceBackground() {
     };
 
     // Orbital movement settings
-    // Simulates looking out from an orbiting satellite moving through space
-    // Stars and celestial bodies drift along an orbital tangent vector (~18-20 degree tilt)
-    const orbitalAngle = (18 * Math.PI) / 180;
-    const baseOrbitalSpeed = 0.22; // pixels per frame at 60fps
-    const dirX = Math.cos(orbitalAngle);
-    const dirY = Math.sin(orbitalAngle);
+    // Stars are distant celestial objects; they move together as a single unified sky
+    // orbiting around an off-screen celestial center (celestial pole).
+    // Because stars are light-years away, all stars share the exact same angular velocity,
+    // preserving constellation shapes and eliminating artificial depth parallax.
+    let skyAngle = 0;
 
-    // Color palettes for stars
+    // Center of celestial rotation: placed off-screen to upper-left for a gentle orbital arc
+    const getCelestialCenter = () => ({
+      cx: width * 0.25,
+      cy: -height * 0.55,
+    });
+
+    // Color palettes for stars: authentic stellar temperature classes
     const starColors = [
-      "rgba(255, 255, 255,", // Pure white
-      "rgba(240, 242, 246,", // Soft starlight
-      "rgba(255, 238, 224,", // Warm amber
-      "rgba(245, 225, 210,", // Claude terracotta glow
-      "rgba(255, 245, 235,", // Warm diamond
+      "rgba(255, 255, 255,", // Pure white (Class A)
+      "rgba(240, 244, 255,", // Diamond starlight (Class B/A)
+      "rgba(255, 244, 232,", // Pale ivory/amber (Class F/G)
+      "rgba(245, 225, 210,", // Claude terracotta celestial glow (Class K)
+      "rgba(255, 248, 240,", // Warm diamond (Class F)
     ];
 
     function resize() {
@@ -204,39 +209,62 @@ export default function SpaceBackground() {
     }
 
     function initStars() {
-      // Density based on viewport area
-      const area = width * height;
-      const count = Math.max(220, Math.floor(area / 3600));
+      const { cx, cy } = getCelestialCenter();
+
+      // Calculate maximum distance to corners of the screen to encompass full rotation
+      const d1 = Math.hypot(0 - cx, 0 - cy);
+      const d2 = Math.hypot(width - cx, 0 - cy);
+      const d3 = Math.hypot(0 - cx, height - cy);
+      const d4 = Math.hypot(width - cx, height - cy);
+      const rMax = Math.max(d1, d2, d3, d4) + 60;
+      const rMin = Math.max(0, -cy - 60);
+
+      const rMinSq = rMin * rMin;
+      const rMaxSq = rMax * rMax;
+
+      // Natural sky density calibrated to viewport area
+      const screenArea = width * height;
+      const annulusArea = Math.PI * (rMaxSq - rMinSq);
+      const desiredOnScreen = Math.max(200, Math.floor(screenArea / 4000));
+      const totalCount = Math.floor(desiredOnScreen * (annulusArea / screenArea));
 
       stars = [];
-      for (let i = 0; i < count; i++) {
-        // Distribute layers: 60% distant, 28% mid, 12% near
-        const rand = Math.random();
-        let layer = 0;
-        let size = 0.7 + Math.random() * 0.7;
-        let baseAlpha = 0.35 + Math.random() * 0.35;
+      for (let i = 0; i < totalCount; i++) {
+        // Uniform spatial distribution across celestial annulus
+        const r = Math.sqrt(rMinSq + Math.random() * (rMaxSq - rMinSq));
+        const baseAngle = Math.random() * Math.PI * 2;
 
-        if (rand > 0.88) {
-          layer = 2; // Near stars
-          size = 1.7 + Math.random() * 1.3;
-          baseAlpha = 0.7 + Math.random() * 0.28;
-        } else if (rand > 0.6) {
-          layer = 1; // Mid stars
-          size = 1.1 + Math.random() * 0.7;
-          baseAlpha = 0.5 + Math.random() * 0.35;
+        const rand = Math.random();
+        let size: number;
+        let baseAlpha: number;
+        let isAnchor = false;
+
+        if (rand > 0.96) {
+          // Prominent navigational anchor stars (~4%) - crisp, slightly brighter
+          isAnchor = true;
+          size = 1.25 + Math.random() * 0.35; // 1.25 to 1.6px
+          baseAlpha = 0.75 + Math.random() * 0.2; // 0.75 to 0.95
+        } else if (rand > 0.78) {
+          // Medium stars (~18%)
+          size = 0.85 + Math.random() * 0.35; // 0.85 to 1.2px
+          baseAlpha = 0.45 + Math.random() * 0.25; // 0.45 to 0.70
+        } else {
+          // Distant background stars (~78%) - fine pinpoint starlight
+          size = 0.45 + Math.random() * 0.35; // 0.45 to 0.80px
+          baseAlpha = 0.22 + Math.random() * 0.28; // 0.22 to 0.50
         }
 
         const colorBase = starColors[Math.floor(Math.random() * starColors.length)];
 
         stars.push({
-          x: Math.random() * width,
-          y: Math.random() * height,
+          r,
+          baseAngle,
           size,
           baseAlpha,
-          twinkleSpeed: 0.015 + Math.random() * 0.035,
+          twinkleSpeed: 0.006 + Math.random() * 0.014,
           twinklePhase: Math.random() * Math.PI * 2,
-          layer,
           color: colorBase,
+          isAnchor,
         });
       }
     }
@@ -295,48 +323,72 @@ export default function SpaceBackground() {
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // 2. Subtle cosmic nebulae (soft drifting interstellar clouds)
-      const nebula1X = width * 0.75 + Math.cos(currentTime * 0.0001) * 30;
-      const nebula1Y = height * 0.25 + Math.sin(currentTime * 0.0001) * 20;
+      // 2. Celestial orbital motion & subtle cosmic nebulae
+      const { cx, cy } = getCelestialCenter();
+      const rCenter = Math.hypot(width * 0.5 - cx, height * 0.5 - cy);
+
+      // Stars are distant objects: mostly fixed to the eye, but as a sky they move like orbiting.
+      // Angular velocity produces ~1.1px/s tangential motion at screen center (~0.018 px/frame at 60fps)
+      const orbitalAngularSpeed = 0.018 / rCenter;
+      skyAngle += orbitalAngularSpeed * deltaFactor;
+      if (skyAngle > Math.PI * 2) {
+        skyAngle -= Math.PI * 2;
+      }
+
+      // Interstellar nebulae anchored to celestial sky
+      const neb1Angle = Math.PI * 0.32 + skyAngle;
+      const neb1Dist = rCenter * 0.92;
+      const nebula1X = cx + neb1Dist * Math.cos(neb1Angle);
+      const nebula1Y = cy + neb1Dist * Math.sin(neb1Angle);
       const neb1 = ctx.createRadialGradient(nebula1X, nebula1Y, 10, nebula1X, nebula1Y, width * 0.55);
-      neb1.addColorStop(0, "rgba(90, 52, 40, 0.06)");
-      neb1.addColorStop(0.5, "rgba(65, 38, 30, 0.03)");
+      neb1.addColorStop(0, "rgba(90, 52, 40, 0.055)");
+      neb1.addColorStop(0.5, "rgba(65, 38, 30, 0.025)");
       neb1.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = neb1;
       ctx.fillRect(0, 0, width, height);
 
-      const nebula2X = width * 0.2 + Math.sin(currentTime * 0.00008) * 40;
-      const nebula2Y = height * 0.8 + Math.cos(currentTime * 0.00008) * 25;
+      const neb2Angle = Math.PI * 0.58 + skyAngle;
+      const neb2Dist = rCenter * 1.15;
+      const nebula2X = cx + neb2Dist * Math.cos(neb2Angle);
+      const nebula2Y = cy + neb2Dist * Math.sin(neb2Angle);
       const neb2 = ctx.createRadialGradient(nebula2X, nebula2Y, 10, nebula2X, nebula2Y, width * 0.5);
-      neb2.addColorStop(0, "rgba(80, 45, 35, 0.05)");
-      neb2.addColorStop(0.6, "rgba(55, 32, 25, 0.02)");
+      neb2.addColorStop(0, "rgba(80, 45, 35, 0.045)");
+      neb2.addColorStop(0.6, "rgba(55, 32, 25, 0.018)");
       neb2.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = neb2;
       ctx.fillRect(0, 0, width, height);
 
-      // 3. Render distant background stars (Layer 0)
+      // 3. Render distant celestial stars as a unified orbiting sky
+      const margin = 15;
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
-        if (star.layer !== 0) continue;
 
-        const moveDist = baseOrbitalSpeed * 0.6 * deltaFactor;
-        star.x += dirX * moveDist;
-        star.y += dirY * moveDist;
+        const currentAngle = star.baseAngle + skyAngle;
+        const x = cx + star.r * Math.cos(currentAngle);
+        const y = cy + star.r * Math.sin(currentAngle);
 
-        const margin = 20;
-        if (star.x > width + margin) star.x = -margin;
-        else if (star.x < -margin) star.x = width + margin;
-        if (star.y > height + margin) star.y = -margin;
-        else if (star.y < -margin) star.y = height + margin;
+        // Fast viewport boundary culling
+        if (x < -margin || x > width + margin || y < -margin || y > height + margin) {
+          continue;
+        }
 
+        // Gentle, organic stellar scintillation (soft 16% breathing shimmer)
         star.twinklePhase += star.twinkleSpeed * deltaFactor;
-        const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.5;
-        const currentAlpha = Math.max(0.18, Math.min(1, star.baseAlpha * (0.68 + twinkle * 0.4)));
+        const twinkle = Math.sin(star.twinklePhase);
+        const currentAlpha = Math.max(0.12, Math.min(1, star.baseAlpha * (0.84 + twinkle * 0.16)));
 
         ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.arc(x, y, star.size, 0, Math.PI * 2);
         ctx.fill();
+
+        // Subtle starlight diffraction ring only for prominent anchor stars
+        if (star.isAnchor && currentAlpha > 0.72) {
+          ctx.fillStyle = `${star.color}${(currentAlpha * 0.12).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(x, y, star.size * 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       // 4. Orbiting Moon
@@ -375,41 +427,7 @@ export default function SpaceBackground() {
         moon.alpha = 0;
       }
 
-      // 5. Render Mid & Near stars (Layers 1 & 2)
-      for (let i = 0; i < stars.length; i++) {
-        const star = stars[i];
-        if (star.layer === 0) continue;
-
-        const layerMultiplier = star.layer === 1 ? 1.0 : 1.7;
-        const moveDist = baseOrbitalSpeed * layerMultiplier * deltaFactor;
-
-        star.x += dirX * moveDist;
-        star.y += dirY * moveDist;
-
-        const margin = 20;
-        if (star.x > width + margin) star.x = -margin;
-        else if (star.x < -margin) star.x = width + margin;
-        if (star.y > height + margin) star.y = -margin;
-        else if (star.y < -margin) star.y = height + margin;
-
-        star.twinklePhase += star.twinkleSpeed * deltaFactor;
-        const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.5;
-        const currentAlpha = Math.max(0.18, Math.min(1, star.baseAlpha * (0.68 + twinkle * 0.4)));
-
-        ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (star.layer === 2 && currentAlpha > 0.65) {
-          ctx.fillStyle = `${star.color}${(currentAlpha * 0.2).toFixed(3)})`;
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, star.size * 2.8, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      // 6. Distant satellite orbiting with blinking beacon
+      // 5. Distant satellite orbiting with blinking beacon
       if (satellite.active) {
         satellite.x += satellite.vx * deltaFactor;
         satellite.y += satellite.vy * deltaFactor;
@@ -445,7 +463,7 @@ export default function SpaceBackground() {
         };
       }
 
-      // 7. Periodic Shooting Stars / Falling Stars
+      // 6. Periodic Shooting Stars / Falling Stars
       if (currentTime > nextShootingStarTime) {
         shootingStars.push(createShootingStar());
         nextShootingStarTime = currentTime + 3500 + Math.random() * 4000;
