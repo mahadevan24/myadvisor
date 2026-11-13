@@ -126,6 +126,23 @@ test("stream accepts a final event without newline and stops at DONE", async () 
   assert.equal(await readStream(new Response(body), () => {}), "OK");
   assert.equal(cancelled, true);
 });
+test("stream extracts reasoning tokens from reasoning, reasoning_content, and thought variants", async () => {
+  const wire =
+    'data: {"choices":[{"delta":{"thought":"Step 1..."}}]}\n\n' +
+    'data: {"choices":[{"delta":{"reasoning_content":" Step 2..."}}]}\n\n' +
+    'data: {"choices":[{"delta":{"reasoning":" Step 3."}}]}\n\n' +
+    'data: {"choices":[{"delta":{"text":"Full "}}]}\n\n' +
+    'data: {"choices":[{"delta":{"content":"answer without cut."}}]}\n\n' +
+    'data: [DONE]\n\n';
+  let capturedReasoning = "";
+  const result = await readStream(
+    new Response(wire),
+    () => {},
+    (r) => { capturedReasoning = r; },
+  );
+  assert.equal(capturedReasoning, "Step 1... Step 2... Step 3.");
+  assert.equal(result, "Full answer without cut.");
+});
 test("many short messages trigger compaction before exceeding API message limits", () => {
   const data = { ...chat, messages: Array.from({ length: 90 }, (_, i) => ({ id: String(i), role: "user" as const, content: "hello" })) };
   assert.ok(needsCompaction(data));

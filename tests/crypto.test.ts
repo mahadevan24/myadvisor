@@ -8,7 +8,14 @@ import {
   base64ToBytes,
   generateEncryptionKey,
   getAccountEncryptionKey,
+  encryptPayload,
+  decryptPayload,
+  getChatEncryptionKey,
+  encryptStreamChunk,
+  decryptStreamChunk,
+  isEncryptedStreamChunk,
 } from "../src/lib/crypto";
+import { readStream } from "../src/lib/stream";
 import type { Workspace } from "../src/lib/memory";
 
 const mockWorkspace: Workspace = {
@@ -130,4 +137,67 @@ test("account-derived encryption key allows multi-device workspace sync across d
   const mobileDecrypted = await decryptWorkspace(desktopEncrypted, mobileKey);
 
   assert.deepEqual(mobileDecrypted, mockWorkspace, "Mobile device must seamlessly decrypt desktop workspace");
+});
+
+test("encryptPayload obscures sensitive chat request messages on network wire", async () => {
+  const uid = "user-work-laptop-456";
+  const chatKey = getChatEncryptionKey(uid);
+  const sensitiveChatPayload = {
+    model: "google/gemini-flash-latest",
+    messages: [
+      { role: "system", content: "You are an executive advisor." },
+      { role: "user", content: "so far today I didn't complete any of my work task also in ibm" },
+    ],
+    stream: true,
+  };
+
+  const encrypted = await encryptPayload(sensitiveChatPayload, chatKey);
+  assert.equal(encrypted._encrypted, true);
+  assert.equal(isEncryptedPayload(encrypted), true);
+
+  const wireString = JSON.stringify(encrypted);
+  // Ensure sensitive plaintext is NOT visible on the wire/network tab
+  assert.equal(wireString.includes("so far today I didn't complete any of my work task also in ibm"), false);
+  assert.equal(wireString.includes("ibm"), false);
+  assert.equal(wireString.includes("executive advisor"), false);
+
+  // Decrypt on the receiving end
+  const decrypted = await decryptPayload(encrypted, chatKey);
+  assert.deepEqual(decrypted, sensitiveChatPayload);
+});
+
+test("encryptStreamChunk and readStream obscure streaming responses without plaintext on wire", async () => {
+  const uid = "user-work-laptop-456";
+  const chatKey = getChatEncryptionKey(uid);
+
+  const chunk1 = { choices: [{ delta: { reasoning: "Private thought." } }] };
+  const chunk2 = { choices: [{ delta: { content: "Confidential company advisory." } }] };
+
+  const encryptedChunk1 = await encryptStreamChunk(chunk1, chatKey);
+  const encryptedChunk2 = await encryptStreamChunk(chunk2, chatKey);
+
+  assert.equal(isEncryptedStreamChunk(encryptedChunk1), true);
+  assert.equal(isEncryptedStreamChunk(encryptedChunk2), true);
+
+  const wire1 = JSON.stringify(encryptedChunk1);
+  const wire2 = JSON.stringify(encryptedChunk2);
+  assert.equal(wire1.includes("Private thought"), false);
+  assert.equal(wire2.includes("Confidential company advisory"), false);
+
+  // Wire stream simulation
+  const wireSse =
+    `data: ${wire1}\n\n` +
+    `data: ${wire2}\n\n` +
+    `data: [DONE]\n\n`;
+
+  let capturedReasoning = "";
+  const result = await readStream(
+    new Response(wireSse),
+    () => {},
+    (r) => { capturedReasoning = r; },
+    chatKey,
+  );
+
+  assert.equal(capturedReasoning, "Private thought.");
+  assert.equal(result, "Confidential company advisory.");
 });

@@ -1,11 +1,19 @@
+import {
+  isEncryptedStreamChunk,
+  decryptStreamChunk,
+  getFastStreamKey,
+} from "./crypto";
+
 export async function readStream(
   response: Response,
   onText: (text: string) => void,
   onReasoning?: (reasoning: string) => void,
+  encryptionKey?: string,
 ) {
   if (!response.body) throw new Error("No response stream received.");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  let streamCryptoKey: CryptoKey | null = null;
   let buffer = "";
   let result = "";
   let reasoning = "";
@@ -25,19 +33,29 @@ export async function readStream(
           break;
         }
         if (!data) continue;
-        const chunk = JSON.parse(data);
+        let chunk = JSON.parse(data);
+        if (isEncryptedStreamChunk(chunk) && encryptionKey) {
+          if (!streamCryptoKey) {
+            streamCryptoKey = await getFastStreamKey(encryptionKey);
+          }
+          chunk = await decryptStreamChunk(chunk, streamCryptoKey);
+        }
         if (chunk.error)
           throw new Error(chunk.error.message || "Model stream failed.");
-        const delta = chunk.choices?.[0]?.delta;
-        if (delta?.reasoning && onReasoning) {
-          reasoning += delta.reasoning;
+        const choice = chunk.choices?.[0];
+        const delta = choice?.delta;
+        const reasoningDelta =
+          delta?.reasoning || delta?.reasoning_content || delta?.thought;
+        if (reasoningDelta && onReasoning) {
+          reasoning += reasoningDelta;
           onReasoning(reasoning);
         }
-        if (delta?.content) {
-          result += delta.content;
+        const contentDelta = delta?.content ?? delta?.text;
+        if (contentDelta) {
+          result += contentDelta;
           onText(result);
         }
-        if (chunk.choices?.[0]?.finish_reason === "error")
+        if (choice?.finish_reason === "error")
           throw new Error("The model stopped with an error.");
       }
       if (complete) { await reader.cancel(); break; }

@@ -84,6 +84,10 @@ import {
   hasCustomPassphrase,
   setCustomPassphrase,
   clearCustomPassphrase,
+  encryptPayload,
+  decryptPayload,
+  getChatEncryptionKey,
+  isEncryptedPayload,
 } from "@/lib/crypto";
 import { readStream } from "@/lib/stream";
 import type { Model } from "@/lib/models";
@@ -1367,21 +1371,28 @@ export default function Home() {
     setModelPicker(target);
   }
   async function generateQuickPrompts(target: Bot): Promise<QuickPrompt[]> {
+    const token = await authToken();
+    const chatKey = getChatEncryptionKey(cloudUid);
+    const payload = {
+      model: target.model,
+      stream: false,
+      max_tokens: 700,
+      messages: [
+        { role: "system", content: "Generate exactly four useful conversation starters for the bot described by the user. Match its domain and personality. Return only a JSON array. Each item must have title (2-5 words), text (3-8 words), and prompt (one actionable user message). Avoid generic prompts and do not mention this task." },
+        { role: "user", content: JSON.stringify({ name: target.name, description: target.description, instructions: target.instructions }) },
+      ],
+    };
+    const encryptedBody = await encryptPayload(payload, chatKey);
     const response = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await authToken()}` },
-      body: JSON.stringify({
-        model: target.model,
-        stream: false,
-        max_tokens: 700,
-        messages: [
-          { role: "system", content: "Generate exactly four useful conversation starters for the bot described by the user. Match its domain and personality. Return only a JSON array. Each item must have title (2-5 words), text (3-8 words), and prompt (one actionable user message). Avoid generic prompts and do not mention this task." },
-          { role: "user", content: JSON.stringify({ name: target.name, description: target.description, instructions: target.instructions }) },
-        ],
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(encryptedBody),
     });
     if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "Could not generate quick prompts.");
-    const data = await response.json();
+    let data = await response.json();
+    if (isEncryptedPayload(data)) {
+      data = await decryptPayload(data, chatKey);
+    }
     const content = data.choices?.[0]?.message?.content || "";
     const match = content.match(/\[[\s\S]*\]/);
     const parsed = match ? JSON.parse(match[0]) : null;
@@ -1400,22 +1411,28 @@ export default function Home() {
     try {
       const messages = buildTitlePrompt(transcript);
       const token = await authToken();
+      const chatKey = getChatEncryptionKey(cloudUid);
+      const payload = {
+        model,
+        messages,
+        stream: false,
+        max_tokens: 40,
+      };
+      const encryptedBody = await encryptPayload(payload, chatKey);
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: false,
-          max_tokens: 40,
-        }),
+        body: JSON.stringify(encryptedBody),
         signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return fallbackTitle;
-      const data = await res.json().catch(() => null);
+      let data = await res.json().catch(() => null);
+      if (isEncryptedPayload(data)) {
+        data = await decryptPayload(data, chatKey).catch(() => null);
+      }
       const raw = data?.choices?.[0]?.message?.content;
       if (!raw || typeof raw !== "string") return fallbackTitle;
       return cleanTitle(raw, fallbackTitle);
@@ -1627,24 +1644,29 @@ export default function Home() {
       model: bot.model,
       messages,
       stream,
-      max_tokens: stream ? 2048 : 700,
       reasoning: { effort: deepThinking ? "high" : "none" },
     };
+    if (!stream) {
+      payload.max_tokens = 1000;
+    }
     if (hasFiles) {
       payload.plugins = [{ id: "file-parser" }];
     }
+    const token = await authToken();
+    const chatKey = getChatEncryptionKey(cloudUid);
+    const encryptedBody = await encryptPayload(payload, chatKey);
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${await authToken()}`,
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(encryptedBody),
       signal,
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || "Request failed.");
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error || "Request failed.");
     }
     return res;
   }
@@ -1737,7 +1759,10 @@ export default function Home() {
           false,
           controller.signal,
         );
-        const data = await res.json();
+        let data = await res.json();
+        if (isEncryptedPayload(data)) {
+          data = await decryptPayload(data, getChatEncryptionKey(cloudUid));
+        }
         const summary = data.choices?.[0]?.message?.content;
         if (!summary)
           throw new Error(
@@ -1843,6 +1868,7 @@ export default function Home() {
           () => {
             setPhase("Thinking");
           },
+          getChatEncryptionKey(cloudUid),
         )
           .then(() => {
             streamFinished = true;

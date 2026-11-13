@@ -1,4 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
+import { decryptPayload, getChatEncryptionKey, isEncryptedPayload } from "../../src/lib/crypto";
+
+async function getChatPayload(route: any) {
+  const json = route.request().postDataJSON();
+  if (isEncryptedPayload(json)) {
+    return await decryptPayload(json, getChatEncryptionKey("guest"));
+  }
+  return json;
+}
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/connection", route => route.fulfill({ json: { connected: true } }));
   await page.route("**/api/models", route => route.fulfill({ json: { models: [
@@ -19,8 +28,9 @@ const sse =
   'data: {"choices":[{"delta":{"content":"Neural networks learn patterns. "}}]}\n\ndata: {"choices":[{"delta":{"content":"**Start with a small experiment.**"}}]}\n\ndata: [DONE]\n\n';
 test("model selection is searchable, persists per bot and reaches chat API", async ({ page }) => {
   let sentModel = "";
-  await page.route("**/api/chat", route => {
-    sentModel = route.request().postDataJSON().model;
+  await page.route("**/api/chat", async route => {
+    const body = await getChatPayload(route);
+    sentModel = body?.model;
     return route.fulfill({ contentType: "text/event-stream", body: sse });
   });
   await page.goto("/");
@@ -223,7 +233,7 @@ test("create bot, stream chat, persist wiki and retrieve it in a new conversatio
   let requestBody:
     { messages: { role: string; content: string }[] } | undefined;
   await page.route("**/api/chat", async (route) => {
-    requestBody = route.request().postDataJSON();
+    requestBody = await getChatPayload(route);
     await route.fulfill({ contentType: "text/event-stream", body: sse });
   });
   await page.goto("/");
@@ -300,10 +310,10 @@ test("long conversation compacts before streaming and saves summary", async ({
   await page.reload();
   const calls: boolean[] = [];
   await page.route("**/api/chat", async (route) => {
-    const body = route.request().postDataJSON();
-    calls.push(body.stream);
+    const body = await getChatPayload(route);
+    calls.push(body?.stream);
     await route.fulfill(
-      body.stream
+      body?.stream
         ? { contentType: "text/event-stream", body: sse }
         : {
             contentType: "application/json",

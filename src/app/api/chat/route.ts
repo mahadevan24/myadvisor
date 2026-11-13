@@ -1,47 +1,77 @@
-import { z } from "zod";
 import { getOpenRouterKey, requireUser } from "@/lib/firebase-admin";
+import { chatRequestSchema } from "@/lib/chat-schema";
+import {
+  decryptPayload,
+  encryptPayload,
+  encryptStreamChunk,
+  getChatEncryptionKey,
+  isEncryptedPayload,
+} from "@/lib/crypto";
+
 export const runtime = "nodejs";
 export const maxDuration = 120;
-const contentPartSchema = z.union([
-  z.object({
-    type: z.literal("text"),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("image_url"),
-    image_url: z.object({
-      url: z.string(),
-    }),
-  }),
-  z.object({
-    type: z.literal("file"),
-    file: z.object({
-      filename: z.string().optional(),
-      file_data: z.string().optional(),
-      file_url: z.string().optional(),
-    }),
-  }),
-]);
 
-const messageSchema = z.object({
-  role: z.enum(["system", "user", "assistant"]),
-  content: z.union([z.string(), z.array(contentPartSchema)]),
-});
+function createEncryptedStream(
+  upstreamStream: ReadableStream<Uint8Array>,
+  chatKey: string,
+): ReadableStream<Uint8Array> {
+  const reader = upstreamStream.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
 
-const reasoningSchema = z.object({
-  effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
-  max_tokens: z.number().int().min(0).max(32768).optional(),
-  exclude: z.boolean().optional(),
-});
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          if (done && buffer && !buffer.endsWith("\n")) buffer += "\n";
 
-const schema = z.object({
-  model: z.string().min(1).max(150),
-  messages: z.array(messageSchema).min(1).max(80),
-  stream: z.boolean().default(true),
-  max_tokens: z.number().int().min(64).max(4096).default(2048),
-  plugins: z.array(z.any()).optional(),
-  reasoning: reasoningSchema.optional(),
-});
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed.startsWith("data:")) {
+              const data = trimmed.slice(5).trim();
+              if (data === "[DONE]") {
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                continue;
+              }
+              if (!data) continue;
+              try {
+                const chunkObj = JSON.parse(data);
+                const encryptedChunk = await encryptStreamChunk(chunkObj, chatKey);
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify(encryptedChunk)}\n\n`),
+                );
+              } catch {
+                controller.enqueue(encoder.encode(`${line}\n\n`));
+              }
+            } else {
+              controller.enqueue(encoder.encode(`${line}\n`));
+            }
+          }
+
+          if (done) {
+            controller.close();
+            break;
+          }
+        }
+      } catch (err) {
+        controller.error(err);
+      } finally {
+        reader.releaseLock();
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
+}
+
 export async function POST(req: Request) {
   let uid: string;
   try {
@@ -65,7 +95,29 @@ export async function POST(req: Request) {
     const raw = await req.text();
     if (raw.length > MAX_REQUEST_BYTES)
       return Response.json({ error: "Request too large." }, { status: 413 });
-    const parsed = schema.safeParse(JSON.parse(raw));
+
+    let bodyData: unknown;
+    try {
+      bodyData = JSON.parse(raw);
+    } catch {
+      return Response.json({ error: "Invalid JSON." }, { status: 400 });
+    }
+
+    const chatKey = getChatEncryptionKey(uid);
+    let wasEncrypted = false;
+    if (isEncryptedPayload(bodyData)) {
+      wasEncrypted = true;
+      try {
+        bodyData = await decryptPayload(bodyData, chatKey);
+      } catch {
+        return Response.json(
+          { error: "Decryption failed: could not decrypt request payload." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const parsed = chatRequestSchema.safeParse(bodyData);
     if (!parsed.success)
       return Response.json({ error: "Invalid chat request." }, { status: 400 });
     const openRouterPayload: Record<string, any> = { ...parsed.data };
@@ -106,6 +158,21 @@ export async function POST(req: Request) {
         upstream = await postToOpenRouter(openRouterPayload);
       }
     }
+    // If a model rejects max_tokens as exceeding its context or output limit, retry without max_tokens.
+    if (upstream.status === 400 && openRouterPayload.max_tokens) {
+      const errClone = upstream.clone();
+      const errJson = await errClone.json().catch(() => null);
+      const errMsg = String(errJson?.error?.message || errJson?.error || "").toLowerCase();
+      if (
+        errMsg.includes("max_tokens") ||
+        errMsg.includes("maximum context length") ||
+        errMsg.includes("context length") ||
+        errMsg.includes("too large")
+      ) {
+        delete openRouterPayload.max_tokens;
+        upstream = await postToOpenRouter(openRouterPayload);
+      }
+    }
     if (!upstream.ok) {
       return Response.json(
         {
@@ -121,11 +188,35 @@ export async function POST(req: Request) {
         { status: upstream.status },
       );
     }
+
+    if (!parsed.data.stream) {
+      const data = await upstream.json();
+      if (wasEncrypted) {
+        const encrypted = await encryptPayload(data, chatKey);
+        return Response.json(encrypted, {
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache, no-transform",
+          },
+        });
+      }
+      return Response.json(data);
+    }
+
+    if (wasEncrypted && upstream.body) {
+      const encryptedStream = createEncryptedStream(upstream.body, chatKey);
+      return new Response(encryptedStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+
     return new Response(upstream.body, {
       headers: {
-        "Content-Type": parsed.data.stream
-          ? "text/event-stream"
-          : "application/json",
+        "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
       },

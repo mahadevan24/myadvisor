@@ -85,8 +85,8 @@ async function deriveKey(secretOrPassphrase: string, salt: Uint8Array): Promise<
   );
 }
 
-export async function encryptWorkspace(
-  workspace: Workspace,
+export async function encryptPayload<T = unknown>(
+  data: T,
   secretOrPassphrase: string,
 ): Promise<EncryptedPayload> {
   const crypto = getCrypto();
@@ -95,7 +95,7 @@ export async function encryptWorkspace(
   const key = await deriveKey(secretOrPassphrase, salt);
 
   const encoder = new TextEncoder();
-  const plaintext = encoder.encode(JSON.stringify(workspace));
+  const plaintext = encoder.encode(JSON.stringify(data));
   const encryptedBuffer = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv as unknown as BufferSource },
     key,
@@ -112,12 +112,12 @@ export async function encryptWorkspace(
   };
 }
 
-export async function decryptWorkspace(
+export async function decryptPayload<T = unknown>(
   payload: unknown,
   secretOrPassphrase: string,
-): Promise<Workspace> {
+): Promise<T> {
   if (!isEncryptedPayload(payload)) {
-    return payload as Workspace;
+    return payload as T;
   }
 
   const crypto = getCrypto();
@@ -135,10 +135,91 @@ export async function decryptWorkspace(
     );
     const decoder = new TextDecoder();
     const jsonString = decoder.decode(decryptedBuffer);
-    return JSON.parse(jsonString) as Workspace;
+    return JSON.parse(jsonString) as T;
   } catch (err) {
     throw new Error("Decryption failed: invalid passphrase/key or data corrupted.");
   }
+}
+
+export async function encryptWorkspace(
+  workspace: Workspace,
+  secretOrPassphrase: string,
+): Promise<EncryptedPayload> {
+  return encryptPayload(workspace, secretOrPassphrase);
+}
+
+export async function decryptWorkspace(
+  payload: unknown,
+  secretOrPassphrase: string,
+): Promise<Workspace> {
+  return decryptPayload<Workspace>(payload, secretOrPassphrase);
+}
+
+export type EncryptedStreamChunk = {
+  _encrypted: true;
+  iv: string; // base64 (12 bytes)
+  ciphertext: string; // base64 (ciphertext + 16-byte GCM tag)
+};
+
+export function isEncryptedStreamChunk(value: unknown): value is EncryptedStreamChunk {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>)._encrypted === true &&
+    typeof (value as Record<string, unknown>).ciphertext === "string" &&
+    typeof (value as Record<string, unknown>).iv === "string"
+  );
+}
+
+const fastKeyCache = new Map<string, Promise<CryptoKey>>();
+export function getFastStreamKey(secret: string): Promise<CryptoKey> {
+  let cached = fastKeyCache.get(secret);
+  if (!cached) {
+    cached = (async () => {
+      const crypto = getCrypto();
+      const rawKey = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+      return crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    })();
+    fastKeyCache.set(secret, cached);
+  }
+  return cached;
+}
+
+export async function encryptStreamChunk(
+  data: unknown,
+  secretOrKey: string | CryptoKey,
+): Promise<EncryptedStreamChunk> {
+  const crypto = getCrypto();
+  const key = typeof secretOrKey === "string" ? await getFastStreamKey(secretOrKey) : secretOrKey;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(typeof data === "string" ? data : JSON.stringify(data));
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+  return {
+    _encrypted: true,
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+  };
+}
+
+export async function decryptStreamChunk<T = unknown>(
+  chunk: EncryptedStreamChunk,
+  secretOrKey: string | CryptoKey,
+): Promise<T> {
+  const crypto = getCrypto();
+  const key = typeof secretOrKey === "string" ? await getFastStreamKey(secretOrKey) : secretOrKey;
+  const iv = base64ToBytes(chunk.iv);
+  const ciphertext = base64ToBytes(chunk.ciphertext);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv as unknown as BufferSource },
+    key,
+    ciphertext as unknown as BufferSource,
+  );
+  const json = new TextDecoder().decode(decrypted);
+  return JSON.parse(json) as T;
+}
+
+export function getChatEncryptionKey(uid?: string): string {
+  return `myadvisor-chat-vault:${uid || "guest"}`;
 }
 
 export function getAccountEncryptionKey(uid: string): string {
