@@ -110,24 +110,24 @@ export default function SpaceBackground() {
     function initStars() {
       // Density based on viewport area
       const area = width * height;
-      const count = Math.max(180, Math.floor(area / 4200));
+      const count = Math.max(220, Math.floor(area / 3600));
 
       stars = [];
       for (let i = 0; i < count; i++) {
-        // Distribute layers: 65% distant, 25% mid, 10% near
+        // Distribute layers: 60% distant, 28% mid, 12% near
         const rand = Math.random();
         let layer = 0;
-        let size = 0.6 + Math.random() * 0.7;
-        let baseAlpha = 0.25 + Math.random() * 0.45;
+        let size = 0.7 + Math.random() * 0.7;
+        let baseAlpha = 0.35 + Math.random() * 0.35;
 
-        if (rand > 0.9) {
+        if (rand > 0.88) {
           layer = 2; // Near stars
-          size = 1.6 + Math.random() * 1.4;
-          baseAlpha = 0.65 + Math.random() * 0.35;
-        } else if (rand > 0.65) {
+          size = 1.7 + Math.random() * 1.3;
+          baseAlpha = 0.7 + Math.random() * 0.28;
+        } else if (rand > 0.6) {
           layer = 1; // Mid stars
-          size = 1.0 + Math.random() * 0.8;
-          baseAlpha = 0.4 + Math.random() * 0.4;
+          size = 1.1 + Math.random() * 0.7;
+          baseAlpha = 0.5 + Math.random() * 0.35;
         }
 
         const colorBase = starColors[Math.floor(Math.random() * starColors.length)];
@@ -250,7 +250,7 @@ export default function SpaceBackground() {
         // Twinkle calculation
         star.twinklePhase += star.twinkleSpeed * deltaFactor;
         const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.5; // 0 to 1
-        const currentAlpha = Math.max(0.12, Math.min(1, star.baseAlpha * (0.65 + twinkle * 0.45)));
+        const currentAlpha = Math.max(0.18, Math.min(1, star.baseAlpha * (0.68 + twinkle * 0.4)));
 
         // Draw star
         ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;

@@ -2097,11 +2097,13 @@ button:hover:not(:disabled) {
   border: 1px solid var(--user-bubble-border);
   border-radius: 20px;
   background: var(--user-bubble);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: #f1f0eb;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
   line-height: 1.55;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.35);
 }
 .message.user .markdown > :last-child {
   margin-bottom: 0;
@@ -2110,8 +2112,9 @@ button:hover:not(:disabled) {
   font-family: "Copernicus", "Iowan Old Style", "Apple Garamond", "Baskerville", "Palatino Linotype", "URW Palladio L", "Charter", "Georgia", "Cambria", serif;
   font-size: 16px;
   line-height: 1.72;
-  color: #d8d6ce;
+  color: #e5e3dc;
   letter-spacing: 0.005em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 .message.assistant .markdown p {
   margin: 0 0 1.2em;
