@@ -725,7 +725,7 @@ button:hover:not(:disabled) {
 .model-trigger { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto; margin-right: 12px; border: 1px solid #363c40; border-radius: 7px; padding: 8px 10px; color: #bdc6c8; font-size: 12px; }
 .model-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
 .model-trigger:hover { border-color: #c2e990; }
-.model-backdrop { z-index: 110; }
+.model-backdrop { z-index: 2000; }
 .model-modal { width: min(680px, 94vw); }
 .model-catalog-status { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #9aa5aa; margin: 15px 0; }
 .model-options { overflow-y: auto; max-height: 42vh; }
@@ -2767,7 +2767,7 @@ button:hover:not(:disabled) {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 2000;
   background: #030608b8;
   backdrop-filter: blur(9px);
   display: flex;
@@ -2783,6 +2783,7 @@ button:hover:not(:disabled) {
   max-width: 520px;
   width: 100%;
   position: relative;
+  z-index: 2001;
   max-height: 92dvh;
   overflow: auto;
   box-shadow: 0 20px 100px #0009;

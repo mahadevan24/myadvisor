@@ -909,6 +909,31 @@ export default function Home() {
   const [dragOverFiles, setDragOverFiles] = useState(false);
   const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (
+      settings ||
+      modelPicker ||
+      editor ||
+      entry ||
+      importModalOpen ||
+      selectedFileForView ||
+      newDocModalOpen ||
+      encryptedUnlockData
+    ) {
+      setBotPickerOpen(false);
+      setBotPickerSearch("");
+    }
+  }, [
+    settings,
+    modelPicker,
+    editor,
+    entry,
+    importModalOpen,
+    selectedFileForView,
+    newDocModalOpen,
+    encryptedUnlockData,
+  ]);
+
   const filteredFiles = useMemo(() => {
     const list = workspace.files || [];
     if (!fileSearch.trim()) return list;
