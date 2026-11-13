@@ -2069,7 +2069,7 @@ export default function Home() {
           aria-label="Expand sidebar"
           title="Expand sidebar (Ctrl+B)"
         >
-          <PanelLeftOpen size={19} />
+          <PanelLeftOpen size={15} />
         </button>
       )}
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`} suppressHydrationWarning>
@@ -2245,11 +2245,6 @@ export default function Home() {
           <div className={`chat-layout ${checklistOpen ? "checklist-open" : "checklist-closed"}`}>
             <section className="conversation">
               <header className="chat-top-header">
-                <div className="chat-bot-info">
-                  <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
-                  <span className="chat-bot-name">{bot.name}</span>
-                  <span className="chat-model-badge">{bot.model.split("/").pop()}</span>
-                </div>
                 <div className="chat-header-actions">
                   {!checklistOpen && (
                     <button

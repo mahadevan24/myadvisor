@@ -156,27 +156,26 @@ button:hover:not(:disabled) {
   background: #222222;
 }
 .sidebar-expand-btn {
-  position: absolute;
-  top: 16px;
+  position: fixed;
+  top: 10px;
   left: 16px;
   z-index: 60;
-  background: #202020;
+  background: #1c1c1c;
   border: 1px solid #333333;
   color: #a09e97;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   transition: all 0.15s ease;
 }
 .sidebar-expand-btn:hover {
   color: #ffffff;
   border-color: #4a4a4a;
-  background: #2a2a2a;
+  background: #252525;
 }
 .brand {
   display: flex;
@@ -3287,6 +3286,7 @@ button:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 .checklist-toggle-btn {
   display: inline-flex;
