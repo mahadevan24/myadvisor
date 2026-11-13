@@ -21,11 +21,14 @@ import {
   applyTodoActions,
   isProductivityBot,
   getGreetingInstruction,
+  chunkDocument,
+  retrieveFromDocuments,
   type Bot,
   type Chat,
   type Entry,
   type Todo,
   type TodoAction,
+  type RagDocument,
 } from "../src/lib/memory";
 import { readStream } from "../src/lib/stream";
 import { filterBotsByQuery, calculateDropdownPosition, CURATED_BOTS } from "../src/lib/curated-bots";
@@ -804,3 +807,116 @@ test("filterBotsByQuery filters by bot name, description, category, and model", 
   const none = filterBotsByQuery(grouped, "nonexistentxyz123");
   assert.equal(Object.keys(none).length, 0);
 });
+
+test("chunkDocument creates single chunk for short docs and splits long docs", () => {
+  const shortDoc: RagDocument = {
+    id: "doc1",
+    name: "short.txt",
+    content: "This is a quick note about architecture.",
+    size: 40,
+    uploadedAt: Date.now(),
+  };
+  const shortChunks = chunkDocument(shortDoc);
+  assert.equal(shortChunks.length, 1);
+  assert.equal(shortChunks[0].content, shortDoc.content);
+  assert.equal(shortChunks[0].chunkIndex, 0);
+  assert.equal(shortChunks[0].totalChunks, 1);
+
+  const longContent = Array.from({ length: 15 }, (_, i) => `Paragraph ${i + 1}: Information about section ${i + 1}. ` + "Details and sentences. ".repeat(8)).join("\n\n");
+  const longDoc: RagDocument = {
+    id: "doc2",
+    name: "large_spec.md",
+    content: longContent,
+    size: longContent.length,
+    uploadedAt: Date.now(),
+  };
+  const chunks = chunkDocument(longDoc, 600);
+  assert.ok(chunks.length > 2);
+  assert.equal(chunks[0].docName, "large_spec.md");
+  assert.equal(chunks[0].totalChunks, chunks.length);
+  assert.equal(chunks[0].chunkIndex, 0);
+});
+
+test("retrieveFromDocuments matches keywords, ranks by relevance, and respects active status", () => {
+  const docs: RagDocument[] = [
+    {
+      id: "doc_arch",
+      name: "system_architecture.md",
+      content: "The backend uses PostgreSQL for relational data and Redis for real-time caching and session management.",
+      size: 105,
+      uploadedAt: 1000,
+      enabled: true,
+    },
+    {
+      id: "doc_ai",
+      name: "ai_models.txt",
+      content: "All bots utilize OpenRouter models with streaming SSE. RAG retrieves document chunks into system prompts.",
+      size: 110,
+      uploadedAt: 2000,
+      enabled: true,
+    },
+    {
+      id: "doc_disabled",
+      name: "confidential_archive.txt",
+      content: "PostgreSQL database credentials and sensitive access keys.",
+      size: 60,
+      uploadedAt: 3000,
+      enabled: false,
+    },
+  ];
+
+  // Retrieve matching architecture
+  const res1 = retrieveFromDocuments(docs, "What database is used for caching in our architecture?");
+  assert.ok(res1.length > 0);
+  assert.equal(res1[0].docId, "doc_arch");
+  assert.ok(res1[0].content.includes("Redis"));
+
+  // Disabled doc should NOT be retrieved even if it matches keywords
+  const resDisabled = retrieveFromDocuments(docs, "confidential archive access keys");
+  assert.ok(!resDisabled.some((r) => r.docId === "doc_disabled"));
+
+  // Greetings should return empty results
+  const resGreeting = retrieveFromDocuments(docs, "hello how are you");
+  assert.equal(resGreeting.length, 0);
+
+  // Broad query about files should surface document overviews
+  const resMeta = retrieveFromDocuments(docs, "What is in my uploaded files?");
+  assert.ok(resMeta.length > 0);
+});
+
+test("buildContext injects retrieved RAG document context across any bot persona", () => {
+  const docs: RagDocument[] = [
+    {
+      id: "doc_policy",
+      name: "company_policy.md",
+      content: "Remote employees receive a $500 monthly wellness stipend and unlimited paid time off for volunteering.",
+      size: 115,
+      uploadedAt: 1000,
+      enabled: true,
+    },
+  ];
+
+  const testChat: Chat = {
+    id: "chat_rag",
+    botId: "cipher",
+    title: "Company questions",
+    messages: [
+      { id: "m1", role: "user", content: "What is the wellness stipend policy according to company docs?" },
+    ],
+    summary: "",
+    compactedCount: 0,
+    updatedAt: Date.now(),
+  };
+
+  const cipherBot = initialWorkspace.bots.find((b) => b.id === "cipher") || initialWorkspace.bots[0];
+  const { messages, ragSources } = buildContext(testChat, cipherBot, [], new Date(), [], docs);
+
+  assert.ok(ragSources && ragSources.length > 0);
+  assert.equal(ragSources[0].docName, "company_policy.md");
+
+  const systemPrompt = messages[0].content as string;
+  assert.ok(systemPrompt.includes("RETRIEVED KNOWLEDGE BASE DOCUMENTS (RAG)"));
+  assert.ok(systemPrompt.includes("company_policy.md"));
+  assert.ok(systemPrompt.includes("$500 monthly wellness stipend"));
+});
+

@@ -11,8 +11,11 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  Copy,
   Download,
   ExternalLink,
+  Eye,
+  FileCode,
   FileText,
   KeyRound,
   Layers3,
@@ -49,12 +52,16 @@ import {
   Chat,
   Entry,
   QuickPrompt,
+  RagChunk,
+  RagDocument,
+  RagRetrievalResult,
   Todo,
   TodoAction,
   Workspace,
   applyTodoActions,
   buildContext,
   buildTitlePrompt,
+  chunkDocument,
   cleanTitle,
   deriveFallbackTitle,
   estimateTokens,
@@ -66,6 +73,7 @@ import {
   mergeBots,
   needsCompaction,
   parseTodoActions,
+  retrieveFromDocuments,
   stripTodoActionTags,
 } from "@/lib/memory";
 import { authToken, connectCloud, disconnectCloud, firebaseConfigured, saveCloud, watchAuth } from "@/lib/firebase";
@@ -79,7 +87,7 @@ import {
 import { readStream } from "@/lib/stream";
 import type { Model } from "@/lib/models";
 
-type View = "chat" | "history" | "bots" | "wiki";
+type View = "chat" | "history" | "bots" | "wiki" | "files";
 type CommandResult = { type: "status" } | { type: "error"; message: string };
 const uid = () => crypto.randomUUID();
 
@@ -300,6 +308,7 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
       data.deletedBotIds = allDeleted;
       data.bots = mergeBots(data.bots, recovered, deletedSet);
       data.todos = Array.isArray(data.todos) ? data.todos : [];
+      data.files = Array.isArray(data.files) ? data.files : [];
       if (!data.defaultBotId) {
         const candidate = localStorage.getItem("myadvisor.defaultBotId");
         if (candidate && data.bots.some((b: Bot) => b.id === candidate)) {
@@ -531,7 +540,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [deepThinking, setDeepThinking] = useState(false);
+  const [deepThinking, setDeepThinking] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [botSearch, setBotSearch] = useState("");
@@ -885,6 +894,110 @@ export default function Home() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+  const [currentRagSources, setCurrentRagSources] = useState<RagRetrievalResult[]>([]);
+  const ragFileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFileForView, setSelectedFileForView] = useState<RagDocument | null>(null);
+  const [newDocModalOpen, setNewDocModalOpen] = useState(false);
+  const [newDocName, setNewDocName] = useState("");
+  const [newDocContent, setNewDocContent] = useState("");
+  const [fileSearch, setFileSearch] = useState("");
+  const [dragOverFiles, setDragOverFiles] = useState(false);
+  const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
+
+  const filteredFiles = useMemo(() => {
+    const list = workspace.files || [];
+    if (!fileSearch.trim()) return list;
+    const query = fileSearch.trim().toLowerCase();
+    return list.filter(
+      (f) =>
+        (f.name || "").toLowerCase().includes(query) ||
+        (f.content || "").toLowerCase().includes(query),
+    );
+  }, [workspace.files, fileSearch]);
+
+  async function handleRagFiles(files: File[]) {
+    if (!files || files.length === 0) return;
+    setError("");
+    const newDocs: RagDocument[] = [];
+    for (const file of files) {
+      if (file.size > 2 * 1024 * 1024) {
+        setError(`"${file.name}" exceeds the 2 MB limit for text knowledge documents.`);
+        continue;
+      }
+      try {
+        const text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string) || "");
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(file);
+        });
+        if (!text || !text.trim()) continue;
+        newDocs.push({
+          id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name || "document.txt",
+          content: text,
+          size: file.size || new TextEncoder().encode(text).length,
+          uploadedAt: Date.now(),
+          type: file.type || "text/plain",
+          enabled: true,
+        });
+      } catch {
+        setError(`Could not read "${file.name}".`);
+      }
+    }
+    if (newDocs.length > 0) {
+      setWorkspace((w) => ({
+        ...w,
+        files: [...newDocs, ...(w.files || [])],
+      }));
+    }
+  }
+
+  function handleCreateDocument() {
+    const trimmedName = newDocName.trim();
+    const trimmedContent = newDocContent.trim();
+    if (!trimmedName || !trimmedContent) return;
+
+    const newDoc: RagDocument = {
+      id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name: trimmedName.includes(".") ? trimmedName : `${trimmedName}.txt`,
+      content: trimmedContent,
+      size: new TextEncoder().encode(trimmedContent).length,
+      uploadedAt: Date.now(),
+      type: "text/plain",
+      enabled: true,
+    };
+
+    setWorkspace((w) => ({
+      ...w,
+      files: [newDoc, ...(w.files || [])],
+    }));
+
+    setNewDocName("");
+    setNewDocContent("");
+    setNewDocModalOpen(false);
+  }
+
+  function handleToggleFile(docId: string) {
+    setWorkspace((w) => ({
+      ...w,
+      files: (w.files || []).map((f) =>
+        f.id === docId ? { ...f, enabled: f.enabled === false ? true : false } : f,
+      ),
+    }));
+  }
+
+  function handleDeleteFile(docId: string) {
+    if (confirm("Are you sure you want to remove this document from your knowledge base?")) {
+      setWorkspace((w) => ({
+        ...w,
+        files: (w.files || []).filter((f) => f.id !== docId),
+      }));
+      if (selectedFileForView?.id === docId) {
+        setSelectedFileForView(null);
+      }
+    }
+  }
 
   async function handleFiles(files: File[]) {
     if (!files || files.length === 0) return;
@@ -1471,6 +1584,7 @@ export default function Home() {
     setInput("");
     setPendingAttachments([]);
     setSources([]);
+    setCurrentRagSources([]);
     setCommandResult(null);
     setView("chat");
     setError("");
@@ -1484,6 +1598,7 @@ export default function Home() {
     setBotId(selected.botId);
     setView("chat");
     setSources([]);
+    setCurrentRagSources([]);
     setError("");
   }
   function updateChat(next: Chat, saveEntry = false) {
@@ -1565,6 +1680,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     setSources([]);
+    setCurrentRagSources([]);
     setInput("");
     setPhase("Connecting");
     let current: Chat = chat
@@ -1632,8 +1748,9 @@ export default function Home() {
         };
         updateChat(current);
       }
-      const context = buildContext(current, bot, workspace.entries, new Date(), workspace.todos || []);
+      const context = buildContext(current, bot, workspace.entries, new Date(), workspace.todos || [], workspace.files || []);
       setSources(context.sources);
+      setCurrentRagSources(context.ragSources || []);
       setPhase("Thinking");
       const assistantId = uid();
       const thinkStart = Date.now();
@@ -2110,7 +2227,7 @@ export default function Home() {
   }
   const contextTokens = chat && bot
     ? estimateTokens(
-        buildContext(chat, bot, workspace.entries, new Date(), workspace.todos || [])
+        buildContext(chat, bot, workspace.entries, new Date(), workspace.todos || [], workspace.files || [])
           .messages.map((m) => {
             if (typeof m.content === "string") return m.content;
             if (Array.isArray(m.content)) {
@@ -2402,6 +2519,17 @@ export default function Home() {
               <Sparkles size={13} className="composer-mode-icon" />
               <span>{deepThinking ? "Think" : "Fast"}</span>
             </button>
+            {(workspace.files || []).length > 0 && (
+              <button
+                type="button"
+                className="chat-rag-status-chip"
+                onClick={() => setView("files")}
+                title="Knowledge Base active for all bots. Click to view or manage files."
+              >
+                <FileText size={12} />
+                <span>{(workspace.files || []).filter((f) => f.enabled !== false).length} RAG docs</span>
+              </button>
+            )}
           </div>
           <div className="composer-actions-right">
             {busy ? (
@@ -2487,6 +2615,7 @@ export default function Home() {
             [
               { id: "history", label: "Chat history", icon: MessageSquare },
               { id: "bots", label: "My bots", icon: Layers3 },
+              { id: "files", label: "My files", icon: FileText },
             ] as const
           ).map((n) => (
             <button
@@ -2504,6 +2633,9 @@ export default function Home() {
               )}
               {n.id === "bots" && (
                 <span className="count">{workspace.bots.length}</span>
+              )}
+              {n.id === "files" && (
+                <span className="count">{(workspace.files || []).length}</span>
               )}
             </button>
           ))}
@@ -2547,7 +2679,9 @@ export default function Home() {
                   ? "Chat history"
                   : view === "bots"
                     ? "My bots"
-                    : "Knowledge wiki"}
+                    : view === "files"
+                      ? "My files"
+                      : "Knowledge wiki"}
               </span>
             </div>
             <div className="topbar-right">
@@ -2735,6 +2869,17 @@ export default function Home() {
                                       </span>
                                     </div>
                                   ))}
+                                </div>
+                              )}
+                              {m.role === "assistant" && currentRagSources && currentRagSources.length > 0 && chat.messages[chat.messages.length - 1]?.id === m.id && (
+                                <div className="chat-rag-banner">
+                                  <span
+                                    className="chat-rag-badge"
+                                    title={currentRagSources.map((r) => `• ${r.docName} (Excerpt ${r.chunkIndex + 1}/${r.totalChunks}): ${r.content.slice(0, 100)}...`).join("\n")}
+                                  >
+                                    <Sparkles size={12} />
+                                    <strong>RAG:</strong> {currentRagSources.length} excerpt{currentRagSources.length > 1 ? "s" : ""} retrieved from {[...new Set(currentRagSources.map((r) => r.docName))].join(", ")}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -3026,14 +3171,49 @@ export default function Home() {
                 <h1>
                   {view === "history"
                     ? "Every conversation, in one place."
-                    : "A mind for every mood."}
+                    : view === "files"
+                      ? "My files & Built-in RAG."
+                      : "A mind for every mood."}
                 </h1>
                 <p>
                   {view === "history"
                     ? "Pick up a thought where you left it."
-                    : "Give your thinking partners a personality and a purpose."}
+                    : view === "files"
+                      ? "Upload text documents (.txt, .md, .json, .csv, code). All bots use them as a shared knowledge base to answer questions."
+                      : "Give your thinking partners a personality and a purpose."}
                 </p>
               </div>
+              {view === "files" && (
+                <div className="library-header-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setNewDocModalOpen(true)}
+                  >
+                    <Plus size={16} /> New document
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => ragFileInputRef.current?.click()}
+                  >
+                    <Upload size={16} /> Upload text files
+                  </button>
+                  <input
+                    type="file"
+                    ref={ragFileInputRef}
+                    style={{ display: "none" }}
+                    multiple
+                    accept=".txt,.md,.markdown,.csv,.json,.ts,.js,.py,.html,.css,.xml,.yaml,.yml,.log,.env,.sh,.sql,.rst,text/*"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        void handleRagFiles(Array.from(e.target.files));
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </div>
+              )}
               {view === "bots" && (
                 <div className="library-header-actions">
                   <button
@@ -3109,6 +3289,33 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+            )}
+            {view === "files" && (workspace.files || []).length > 0 && (
+              <label className="search-box">
+                <Search size={17} />
+                <input
+                  type="text"
+                  placeholder="Search uploaded documents by name or content…"
+                  value={fileSearch}
+                  onChange={(e) => setFileSearch(e.target.value)}
+                  aria-label="Search documents"
+                />
+                {fileSearch && (
+                  <button
+                    type="button"
+                    className="search-box-clear"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setFileSearch("");
+                    }}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </label>
             )}
             {view === "history" && (
               <label className="search-box">
@@ -3296,6 +3503,187 @@ export default function Home() {
                   </button>
                 </div>
               )}
+            {view === "files" && (
+              <div className="files-view-container">
+                <div className="files-stats-bar">
+                  <div className="files-stat-card">
+                    <span className="files-stat-label">TOTAL DOCUMENTS</span>
+                    <span className="files-stat-value">{(workspace.files || []).length}</span>
+                  </div>
+                  <div className="files-stat-card">
+                    <span className="files-stat-label">RAG ENGINE STATUS</span>
+                    <div className="files-stat-status">
+                      <span className="online-dot" />
+                      <span>Active across all {workspace.bots.length} bots</span>
+                    </div>
+                  </div>
+                  <div className="files-stat-card">
+                    <span className="files-stat-label">INDEXED KNOWLEDGE SIZE</span>
+                    <span className="files-stat-value">
+                      {formatFileSize(
+                        (workspace.files || []).reduce((acc, f) => acc + (f.size || 0), 0)
+                      )}{" "}
+                      <span className="files-stat-sub">
+                        (~{estimateTokens(
+                          (workspace.files || []).reduce((acc, f) => acc + (f.content || ""), "")
+                        ).toLocaleString()} tokens)
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  className={`files-dropzone ${dragOverFiles ? "dragging" : ""}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverFiles(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setDragOverFiles(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverFiles(false);
+                    if (e.dataTransfer.files?.length) {
+                      void handleRagFiles(Array.from(e.dataTransfer.files));
+                    }
+                  }}
+                  onClick={() => ragFileInputRef.current?.click()}
+                >
+                  <div className="dropzone-content">
+                    <Upload size={24} className="dropzone-icon" />
+                    <div>
+                      <strong>Drag and drop text documents here, or click to browse</strong>
+                      <p>Supports .txt, .md, .csv, .json, .yaml, code, and plain text files (up to 2 MB each)</p>
+                    </div>
+                  </div>
+                </div>
+
+                {(workspace.files || []).length === 0 ? (
+                  <div className="library-empty">
+                    <FileText size={42} />
+                    <h2>Your RAG knowledge base is empty.</h2>
+                    <p>
+                      Upload text documents or notes to ground your AI companions with your personal knowledge.
+                      <br />
+                      All bots (Nova, Steve Jobs, Seneca, custom bots) will automatically retrieve and cite relevant passages from these files during conversations.
+                    </p>
+                    <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() => ragFileInputRef.current?.click()}
+                      >
+                        <Upload size={16} /> Upload text files
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setNewDocModalOpen(true)}
+                      >
+                        <Plus size={16} /> New text document
+                      </button>
+                    </div>
+                  </div>
+                ) : filteredFiles.length === 0 ? (
+                  <div className="library-empty">
+                    <Search size={40} />
+                    <h2>No matching documents found.</h2>
+                    <p>No uploaded documents match "{fileSearch.trim()}". Try searching for a different keyword or filename.</p>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ marginTop: 12 }}
+                      onClick={() => setFileSearch("")}
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                ) : (
+                  <div className="files-grid">
+                    {filteredFiles.map((doc) => (
+                      <article key={doc.id} className="file-card">
+                        <div className="card-top-row">
+                          <div className="file-card-header">
+                            <span className="file-icon-badge">
+                              {doc.name.endsWith(".json") || doc.name.endsWith(".js") || doc.name.endsWith(".ts") || doc.name.endsWith(".py") ? (
+                                <FileCode size={19} />
+                              ) : (
+                                <FileText size={19} />
+                              )}
+                            </span>
+                            <div className="file-info">
+                              <h3 title={doc.name}>{doc.name}</h3>
+                              <div className="file-meta">
+                                <span>{formatFileSize(doc.size || doc.content.length)}</span>
+                                <span>•</span>
+                                <span>~{estimateTokens(doc.content).toLocaleString()} tokens</span>
+                                <span>•</span>
+                                <span>{new Date(doc.uploadedAt || Date.now()).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="card-actions">
+                            <button
+                              type="button"
+                              className={`card-default-pill ${doc.enabled !== false ? "active" : ""}`}
+                              onClick={() => handleToggleFile(doc.id)}
+                              title={doc.enabled !== false ? "Click to pause from RAG" : "Click to activate for RAG"}
+                              aria-label={doc.enabled !== false ? "RAG Active" : "RAG Paused"}
+                            >
+                              <span className={doc.enabled !== false ? "online-dot" : "offline-dot"} />
+                              <span>{doc.enabled !== false ? "RAG Active" : "Paused"}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="card-settings icon-button"
+                              onClick={() => handleDeleteFile(doc.id)}
+                              title="Delete document"
+                              aria-label={`Delete ${doc.name}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          className="file-preview-snippet"
+                          onClick={() => setSelectedFileForView(doc)}
+                          title="Click to view full content"
+                        >
+                          <pre>{doc.content.slice(0, 240)}{doc.content.length > 240 ? "…" : ""}</pre>
+                        </div>
+
+                        <div className="file-card-footer">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "5px 10px", fontSize: 11 }}
+                            onClick={() => setSelectedFileForView(doc)}
+                          >
+                            <Eye size={13} /> View full document
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "5px 10px", fontSize: 11 }}
+                            onClick={() => {
+                              void navigator.clipboard.writeText(doc.content);
+                              setCopiedDocId(doc.id);
+                              setTimeout(() => setCopiedDocId(null), 2000);
+                            }}
+                          >
+                            {copiedDocId === doc.id ? <Check size={13} /> : <Copy size={13} />}
+                            <span>{copiedDocId === doc.id ? "Copied" : "Copy"}</span>
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
       </main>
@@ -3864,6 +4252,151 @@ export default function Home() {
               </button>
             </div>
           </section>
+        </div>
+      )}
+      {selectedFileForView && (
+        <div className="modal-backdrop" onClick={() => setSelectedFileForView(null)}>
+          <section
+            className="modal file-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="file-view-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close icon-button"
+              aria-label="Close document viewer"
+              onClick={() => setSelectedFileForView(null)}
+            >
+              <X size={20} />
+            </button>
+            <div className="modal-eyebrow">
+              <FileText size={16} /> KNOWLEDGE BASE DOCUMENT
+            </div>
+            <h2 id="file-view-title">{selectedFileForView.name}</h2>
+            <div className="file-modal-meta">
+              <span>{formatFileSize(selectedFileForView.size || selectedFileForView.content.length)}</span>
+              <span>•</span>
+              <span>~{estimateTokens(selectedFileForView.content).toLocaleString()} tokens</span>
+              <span>•</span>
+              <span>{selectedFileForView.content.split(/\s+/).filter(Boolean).length.toLocaleString()} words</span>
+              <span>•</span>
+              <span className={selectedFileForView.enabled !== false ? "badge-emerald" : "badge-gray"}>
+                {selectedFileForView.enabled !== false ? "✓ Active for RAG across all bots" : "Paused from RAG"}
+              </span>
+            </div>
+            <div className="file-modal-viewer">
+              <pre>{selectedFileForView.content}</pre>
+            </div>
+            <div className="file-modal-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(selectedFileForView.content);
+                  setCopiedDocId(selectedFileForView.id);
+                  setTimeout(() => setCopiedDocId(null), 2000);
+                }}
+              >
+                {copiedDocId === selectedFileForView.id ? <Check size={16} /> : <Copy size={16} />}
+                <span>{copiedDocId === selectedFileForView.id ? "Copied" : "Copy content"}</span>
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  handleToggleFile(selectedFileForView.id);
+                  setSelectedFileForView((prev) =>
+                    prev ? { ...prev, enabled: prev.enabled === false } : null,
+                  );
+                }}
+              >
+                {selectedFileForView.enabled !== false ? "Pause from RAG" : "Enable for RAG"}
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => {
+                  handleDeleteFile(selectedFileForView.id);
+                  setSelectedFileForView(null);
+                }}
+              >
+                <Trash2 size={16} /> Delete document
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {newDocModalOpen && (
+        <div className="modal-backdrop" onClick={() => setNewDocModalOpen(false)}>
+          <form
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-doc-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCreateDocument();
+            }}
+          >
+            <button
+              type="button"
+              className="modal-close icon-button"
+              aria-label="Close new document dialog"
+              onClick={() => setNewDocModalOpen(false)}
+            >
+              <X size={20} />
+            </button>
+            <div className="modal-eyebrow">
+              <Plus size={16} /> ADD TEXT DOCUMENT
+            </div>
+            <h2 id="new-doc-title">Create or paste document.</h2>
+            <p>Add text, notes, guidelines, or reference material for all bots to use with RAG.</p>
+
+            <label className="modal-field" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 16 }}>
+              <span style={{ fontSize: 12, color: "#8a9599", fontWeight: 500 }}>Document Name / Title</span>
+              <input
+                type="text"
+                placeholder="e.g. quarterly-goals.md or company-handbook.txt"
+                value={newDocName}
+                onChange={(e) => setNewDocName(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+
+            <label className="modal-field" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+              <span style={{ fontSize: 12, color: "#8a9599", fontWeight: 500 }}>Text Content</span>
+              <textarea
+                rows={10}
+                placeholder="Paste or write document text here..."
+                value={newDocContent}
+                onChange={(e) => setNewDocContent(e.target.value)}
+                required
+                style={{ fontFamily: "monospace", fontSize: 12.5, lineHeight: 1.6 }}
+              />
+            </label>
+
+            <div className="import-modal-actions" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setNewDocModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={!newDocName.trim() || !newDocContent.trim()}
+              >
+                Save to Knowledge Base
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

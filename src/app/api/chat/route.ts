@@ -70,9 +70,8 @@ export async function POST(req: Request) {
       return Response.json({ error: "Invalid chat request." }, { status: 400 });
     const openRouterPayload: Record<string, any> = { ...parsed.data };
     if (!openRouterPayload.reasoning) {
-      // Default reasoning effort to "none" so reasoning-enabled models (like Gemini 2.5 Flash / Gemini Flash Latest)
-      // return answers immediately (1-2s) instead of spending 6-10s generating hidden thinking tokens.
-      openRouterPayload.reasoning = { effort: "none" };
+      // Default reasoning effort to "high" so models use think mode by default.
+      openRouterPayload.reasoning = { effort: "high" };
     }
 
     const postToOpenRouter = async (payload: Record<string, any>) => {
@@ -90,9 +89,9 @@ export async function POST(req: Request) {
 
     let upstream = await postToOpenRouter(openRouterPayload);
 
-    // If the model has mandatory reasoning (e.g. DeepSeek-R1 or o1) and rejects effort: "none",
+    // If the model has mandatory reasoning and rejects effort: "none", or doesn't support reasoning parameters,
     // seamlessly retry without the reasoning block so the request succeeds.
-    if (upstream.status === 400 && openRouterPayload.reasoning?.effort === "none") {
+    if (upstream.status === 400 && openRouterPayload.reasoning) {
       const errClone = upstream.clone();
       const errJson = await errClone.json().catch(() => null);
       const errMsg = String(errJson?.error?.message || errJson?.error || "").toLowerCase();
