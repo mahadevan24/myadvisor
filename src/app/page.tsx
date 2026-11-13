@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   AudioLines,
   BookOpen,
+  Brain,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -34,6 +35,7 @@ import {
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -468,6 +470,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [deepThinking, setDeepThinking] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [entry, setEntry] = useState<Entry | null>(null);
@@ -1414,6 +1417,7 @@ export default function Home() {
       messages,
       stream,
       max_tokens: stream ? 2048 : 700,
+      reasoning: { effort: deepThinking ? "high" : "none" },
     };
     if (hasFiles) {
       payload.plugins = [{ id: "file-parser" }];
@@ -1574,11 +1578,13 @@ export default function Home() {
             let step = 1;
             if (typeof document !== "undefined" && document.hidden) {
               step = backlog;
-            } else if (backlog > 80) {
-              step = Math.ceil(backlog / 4);
-            } else if (backlog > 30) {
-              step = Math.ceil(backlog / 6);
-            } else if (backlog > 8) {
+            } else if (streamFinished) {
+              step = backlog;
+            } else if (backlog > 40) {
+              step = Math.ceil(backlog / 2);
+            } else if (backlog > 15) {
+              step = Math.ceil(backlog / 3);
+            } else if (backlog > 4) {
               step = 2;
             } else {
               step = 1;
@@ -1612,13 +1618,19 @@ export default function Home() {
 
         rafId = requestAnimationFrame(updateDisplay);
 
-        readStream(response, (content) => {
-          if (!firstChunkTime) {
-            firstChunkTime = Date.now();
-          }
-          setPhase("Streaming");
-          targetContent = content;
-        })
+        readStream(
+          response,
+          (content) => {
+            if (!firstChunkTime) {
+              firstChunkTime = Date.now();
+            }
+            setPhase("Streaming");
+            targetContent = content;
+          },
+          () => {
+            setPhase("Thinking");
+          },
+        )
           .then(() => {
             streamFinished = true;
           })
@@ -2235,6 +2247,17 @@ export default function Home() {
             >
               <span>{modelShortName}</span>
               <ChevronDown size={13} />
+            </button>
+            <button
+              type="button"
+              className={`composer-mode-pill ${deepThinking ? "active" : "fast"}`}
+              disabled={busy}
+              onClick={() => setDeepThinking(!deepThinking)}
+              aria-label={deepThinking ? "Deep thinking enabled. Click to switch to Fast mode." : "Fast mode active (1-2s replies). Click to switch to Thinking mode."}
+              title={deepThinking ? "Thinking Mode: Deep analytical reasoning (takes ~5-10s)" : "Fast Mode: Ultra-fast 1-2s replies without thinking lag"}
+            >
+              {deepThinking ? <Brain size={13} /> : <Zap size={13} />}
+              <span>{deepThinking ? "Think" : "Fast"}</span>
             </button>
           </div>
           <div className="composer-actions-right">

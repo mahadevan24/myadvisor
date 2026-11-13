@@ -28,12 +28,19 @@ const messageSchema = z.object({
   content: z.union([z.string(), z.array(contentPartSchema)]),
 });
 
+const reasoningSchema = z.object({
+  effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
+  max_tokens: z.number().int().min(0).max(32768).optional(),
+  exclude: z.boolean().optional(),
+});
+
 const schema = z.object({
   model: z.string().min(1).max(150),
   messages: z.array(messageSchema).min(1).max(80),
   stream: z.boolean().default(true),
   max_tokens: z.number().int().min(64).max(4096).default(2048),
   plugins: z.array(z.any()).optional(),
+  reasoning: reasoningSchema.optional(),
 });
 export async function POST(req: Request) {
   let uid: string;
@@ -61,19 +68,45 @@ export async function POST(req: Request) {
     const parsed = schema.safeParse(JSON.parse(raw));
     if (!parsed.success)
       return Response.json({ error: "Invalid chat request." }, { status: 400 });
-    const upstream = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
+    const openRouterPayload: Record<string, any> = { ...parsed.data };
+    if (!openRouterPayload.reasoning) {
+      // Default reasoning effort to "none" so reasoning-enabled models (like Gemini 2.5 Flash / Gemini Flash Latest)
+      // return answers immediately (1-2s) instead of spending 6-10s generating hidden thinking tokens.
+      openRouterPayload.reasoning = { effort: "none" };
+    }
+
+    const postToOpenRouter = async (payload: Record<string, any>) => {
+      return fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
           "X-Title": "MyAdvisor",
         },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify(payload),
         signal: req.signal,
-      },
-    );
+      });
+    };
+
+    let upstream = await postToOpenRouter(openRouterPayload);
+
+    // If the model has mandatory reasoning (e.g. DeepSeek-R1 or o1) and rejects effort: "none",
+    // seamlessly retry without the reasoning block so the request succeeds.
+    if (upstream.status === 400 && openRouterPayload.reasoning?.effort === "none") {
+      const errClone = upstream.clone();
+      const errJson = await errClone.json().catch(() => null);
+      const errMsg = String(errJson?.error?.message || errJson?.error || "").toLowerCase();
+      if (
+        errMsg.includes("reasoning") ||
+        errMsg.includes("thinking") ||
+        errMsg.includes("mandatory") ||
+        errMsg.includes("unsupported") ||
+        errMsg.includes("effort")
+      ) {
+        delete openRouterPayload.reasoning;
+        upstream = await postToOpenRouter(openRouterPayload);
+      }
+    }
     if (!upstream.ok) {
       return Response.json(
         {

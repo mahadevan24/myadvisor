@@ -1,12 +1,14 @@
 export async function readStream(
   response: Response,
   onText: (text: string) => void,
+  onReasoning?: (reasoning: string) => void,
 ) {
   if (!response.body) throw new Error("No response stream received.");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let result = "";
+  let reasoning = "";
   let complete = false;
   try {
     while (true) {
@@ -26,9 +28,13 @@ export async function readStream(
         const chunk = JSON.parse(data);
         if (chunk.error)
           throw new Error(chunk.error.message || "Model stream failed.");
-        const delta = chunk.choices?.[0]?.delta?.content;
-        if (delta) {
-          result += delta;
+        const delta = chunk.choices?.[0]?.delta;
+        if (delta?.reasoning && onReasoning) {
+          reasoning += delta.reasoning;
+          onReasoning(reasoning);
+        }
+        if (delta?.content) {
+          result += delta.content;
           onText(result);
         }
         if (chunk.choices?.[0]?.finish_reason === "error")
@@ -42,7 +48,7 @@ export async function readStream(
   }
   if (!complete)
     throw new Error("Response was interrupted. Partial text has been kept.");
-  if (!result)
+  if (!result && !reasoning)
     throw new Error("The model returned no text. Try another model.");
   return result;
 }

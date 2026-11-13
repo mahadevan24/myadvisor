@@ -23,7 +23,7 @@ export async function requireUser(req: Request) {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) throw new Error("UNAUTHENTICATED");
   try {
-    return await adminAuth.verifyIdToken(header.slice(7), true);
+    return await adminAuth.verifyIdToken(header.slice(7), false);
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (code?.startsWith("app/") || code === "auth/internal-error" || code === "auth/insufficient-permission") {
@@ -76,23 +76,38 @@ export function decryptSecret(data: {
 const keyDocument = (uid: string) =>
   adminDb.doc(`users/${uid}/private/openrouter`);
 
+const keyCache = new Map<string, { key: string; expires: number }>();
+const KEY_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function saveOpenRouterKey(uid: string, key: string) {
+  keyCache.delete(uid);
   await keyDocument(uid).set({
     ...encryptSecret(key),
     updatedAt: Date.now(),
   });
+  keyCache.set(uid, { key, expires: Date.now() + KEY_CACHE_TTL_MS });
 }
 
 export async function getOpenRouterKey(uid: string) {
+  const cached = keyCache.get(uid);
+  if (cached && cached.expires > Date.now()) {
+    return cached.key;
+  }
   const snapshot = await keyDocument(uid).get();
-  if (!snapshot.exists) return null;
-  return decryptSecret(snapshot.data() as {
+  if (!snapshot.exists) {
+    keyCache.delete(uid);
+    return null;
+  }
+  const decrypted = decryptSecret(snapshot.data() as {
     ciphertext: string;
     iv: string;
     tag: string;
   });
+  keyCache.set(uid, { key: decrypted, expires: Date.now() + KEY_CACHE_TTL_MS });
+  return decrypted;
 }
 
 export async function deleteOpenRouterKey(uid: string) {
+  keyCache.delete(uid);
   await keyDocument(uid).delete();
 }

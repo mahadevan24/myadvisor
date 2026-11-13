@@ -1434,6 +1434,39 @@ button:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.composer-mode-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.composer-mode-pill.fast {
+  color: #facc15;
+  border-color: rgba(250, 204, 21, 0.25);
+  background: rgba(250, 204, 21, 0.07);
+}
+.composer-mode-pill.fast:hover {
+  background: rgba(250, 204, 21, 0.14);
+  border-color: rgba(250, 204, 21, 0.4);
+  color: #fde047;
+}
+.composer-mode-pill.active {
+  color: #c084fc;
+  border-color: rgba(192, 132, 252, 0.35);
+  background: rgba(192, 132, 252, 0.1);
+}
+.composer-mode-pill.active:hover {
+  background: rgba(192, 132, 252, 0.18);
+  border-color: rgba(192, 132, 252, 0.5);
+  color: #e9d5ff;
+}
 .composer-icon-btn {
   width: 34px;
   height: 34px;
