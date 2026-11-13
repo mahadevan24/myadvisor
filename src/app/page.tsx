@@ -2648,8 +2648,7 @@ export default function Home() {
             setSettings(true);
             closeSidebarOnMobile();
           }}>
-            <Settings2 size={16} /> Settings{" "}
-            <span className={connected ? "online-dot" : "offline-dot"} />
+            <Settings2 size={16} /> Settings
           </button>
         </div>
       </aside>
