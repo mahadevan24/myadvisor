@@ -122,7 +122,9 @@ export default function SpaceBackground() {
     // Stars collection
     let stars: Star[] = [];
     const shootingStars: ShootingStar[] = [];
-    let nextShootingStarTime = performance.now() + 1500; // First shooting star soon after load
+    // Rare shooting stars / falling stars: once every 5 minutes
+    const SHOOTING_STAR_INTERVAL_MS = 5 * 60 * 1000;
+    let nextShootingStarTime = performance.now() + SHOOTING_STAR_INTERVAL_MS;
 
     // Orbiting Moon
     const moonRadius = 46;
@@ -373,10 +375,10 @@ export default function SpaceBackground() {
         moon.alpha = 0.85;
       }
 
-      // 5. Periodic Shooting Stars / Falling Stars
+      // 5. Periodic Shooting Stars / Falling Stars (rare celestial event, once every ~5 minutes)
       if (currentTime > nextShootingStarTime) {
         shootingStars.push(createShootingStar());
-        nextShootingStarTime = currentTime + 3500 + Math.random() * 4000;
+        nextShootingStarTime = currentTime + SHOOTING_STAR_INTERVAL_MS + (Math.random() - 0.5) * 60000;
       }
 
       for (let i = shootingStars.length - 1; i >= 0; i--) {
