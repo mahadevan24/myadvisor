@@ -20,6 +20,7 @@ import {
   parseTodoActions,
   applyTodoActions,
   isProductivityBot,
+  isChecklistSupportedBot,
   getGreetingInstruction,
   chunkDocument,
   retrieveFromDocuments,
@@ -723,6 +724,52 @@ test("buildContext includes checklist context, instructions, and persona guideli
   assert.ok(sys.includes("Elon Musk"));
   assert.ok(sys.includes("Osho"));
   assert.ok(sys.includes("<todo_action action="));
+});
+
+test("isChecklistSupportedBot restricts checklist to business and productivity bots", () => {
+  const businessBot = CURATED_BOTS.find((b) => b.id === "steve-jobs")!;
+  const productivityBot = CURATED_BOTS.find((b) => b.id === "james-clear")!;
+  const spiritualityBot = CURATED_BOTS.find((b) => b.id === "osho")!;
+  const philosophyBot = CURATED_BOTS.find((b) => b.id === "marcus-aurelius")!;
+  const scienceBot = CURATED_BOTS.find((b) => b.id === "richard-feynman")!;
+
+  assert.equal(isChecklistSupportedBot(businessBot), true);
+  assert.equal(isChecklistSupportedBot(productivityBot), true);
+  assert.equal(isChecklistSupportedBot(spiritualityBot), false);
+  assert.equal(isChecklistSupportedBot(philosophyBot), false);
+  assert.equal(isChecklistSupportedBot(scienceBot), false);
+  assert.equal(isChecklistSupportedBot(null), false);
+  assert.equal(isChecklistSupportedBot(undefined), false);
+
+  // Custom bots by category name
+  assert.equal(isChecklistSupportedBot({ category: "Business and entrepreneurship" }), true);
+  assert.equal(isChecklistSupportedBot({ category: "Productivity and self-improvement" }), true);
+  assert.equal(isChecklistSupportedBot({ category: "Mindset and philosophy" }), false);
+  assert.equal(isChecklistSupportedBot({ category: "Spirituality" }), false);
+});
+
+test("buildContext excludes checklist context and instructions for other bots", () => {
+  const oshoBot = CURATED_BOTS.find((b) => b.id === "osho")!;
+  const sampleTodos: Todo[] = [
+    { id: "td1", text: "Ship MVP v1", completed: true, createdAt: 100 },
+  ];
+
+  const testChat: Chat = {
+    id: "chat_meditation",
+    botId: oshoBot.id,
+    title: "Meditation inquiry",
+    messages: [{ id: "m1", role: "user", content: "How do I cultivate presence?" }],
+    summary: "",
+    compactedCount: 0,
+    updatedAt: Date.now(),
+  };
+
+  const { messages } = buildContext(testChat, oshoBot, [], new Date(), sampleTodos);
+  const sys = messages[0].content as string;
+
+  assert.ok(!sys.includes("CURRENT USER CHECKLIST / TODOS:"));
+  assert.ok(!sys.includes("CHECKLIST / TODO MANAGEMENT INTEGRATION:"));
+  assert.ok(!sys.includes("<todo_action action="));
 });
 
 test("calculateDropdownPosition prevents overflowing top and clamps height to safe area", () => {

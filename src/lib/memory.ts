@@ -700,6 +700,49 @@ export function isProductivityBot(
   return false;
 }
 
+export function isChecklistSupportedBot(
+  bot?: Bot | { category?: string; id?: string; name?: string } | null,
+): boolean {
+  if (!bot) return false;
+  let category = (bot.category || "").toLowerCase().trim();
+  if (!category && bot.id) {
+    const curated = CURATED_BOTS.find((b) => b.id === bot.id);
+    if (curated?.category) {
+      category = curated.category.toLowerCase().trim();
+    }
+  }
+
+  if (
+    category.includes("business") ||
+    category.includes("entrepreneurship") ||
+    category.includes("productivity") ||
+    category.includes("self-improvement") ||
+    category.includes("self improvement")
+  ) {
+    return true;
+  }
+
+  const id = (bot.id || "").toLowerCase().trim();
+  const businessOrProductivityIds = [
+    // Business and entrepreneurship:
+    "steve-jobs",
+    "jeff-bezos",
+    "buffett-munger",
+    "naval-ravikant",
+    "paul-graham",
+    "sam-altman",
+    "alex-hormozi",
+    "elon-musk",
+    // Productivity and self-improvement:
+    "tim-ferriss",
+    "james-clear",
+    "cal-newport",
+    "david-goggins",
+    "jocko-willink",
+  ];
+  return businessOrProductivityIds.includes(id);
+}
+
 export function getGreetingInstruction(
   bot?: Bot | { category?: string; id?: string; name?: string } | null,
 ): string {
@@ -741,8 +784,9 @@ export function buildContext(
   });
   const temporalContext = `CURRENT DATE & TIME: Today is ${dateStr}, ${timeStr} (${timeZone}). Current year: ${now.getFullYear()}. Always anchor your temporal understanding, relative dates, and current year calculations to this date.`;
   const greetingInstruction = getGreetingInstruction(bot);
-  const todosContext = formatTodosContext(todos);
-  const todoInstructions = getTodoInstructions(bot);
+  const isChecklistBot = isChecklistSupportedBot(bot);
+  const todosContext = isChecklistBot ? formatTodosContext(todos) : "";
+  const todoInstructions = isChecklistBot ? getTodoInstructions(bot) : "";
   const ragSection = ragSources.length > 0
     ? `RETRIEVED KNOWLEDGE BASE DOCUMENTS (RAG):
 The user has uploaded knowledge base text documents to their workspace. The following relevant excerpts were retrieved to help you answer:

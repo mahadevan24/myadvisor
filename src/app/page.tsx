@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { SearchField, Modal } from "@/components";
 import {
   BOT_CATEGORIES,
   CURATED_BOTS,
@@ -66,6 +67,7 @@ import {
   deriveFallbackTitle,
   estimateTokens,
   initialWorkspace,
+  isChecklistSupportedBot,
   isCuratedBot,
   isGenericTitle,
   isGreetingTitle,
@@ -1117,6 +1119,7 @@ export default function Home() {
     return () => window.removeEventListener("paste", onGlobalPaste);
   }, []);
   const bot = workspace.bots.find((b) => b.id === botId) || workspace.bots[0];
+  const isChecklistBot = isChecklistSupportedBot(bot);
   const chat = workspace.chats.find((c) => c.id === chatId);
   const botEntries = bot
     ? workspace.entries.filter((e) => e.botId === bot.id)
@@ -1859,7 +1862,7 @@ export default function Home() {
       const { actions: parsedActions, cleaned: cleanedContent } = parseTodoActions(targetContent);
       let appliedTodoActions: TodoAction[] = [];
 
-      if (parsedActions.length > 0) {
+      if (parsedActions.length > 0 && isChecklistBot) {
         setWorkspace((currentWs) => {
           const res = applyTodoActions(
             currentWs.todos || [],
@@ -2701,27 +2704,29 @@ export default function Home() {
           </header>
         )}
         {view === "chat" && bot ? (
-          <div className={`chat-layout ${checklistOpen ? "checklist-open" : "checklist-closed"}`}>
+          <div className={`chat-layout ${isChecklistBot && checklistOpen ? "checklist-open" : "checklist-closed"}`}>
             <section className="conversation">
-              <header className="chat-top-header">
-                <div className="chat-header-actions">
-                  {!checklistOpen && (
-                    <button
-                      type="button"
-                      className="checklist-toggle-btn"
-                      onClick={toggleChecklist}
-                      title="Open checklist"
-                      aria-label="Open checklist"
-                    >
-                      <ListTodo size={15} />
-                      <span className="checklist-toggle-label">Checklist</span>
-                      {pendingTodoCount > 0 && (
-                        <span className="checklist-badge">{pendingTodoCount}</span>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </header>
+              {isChecklistBot && (
+                <header className="chat-top-header">
+                  <div className="chat-header-actions">
+                    {!checklistOpen && (
+                      <button
+                        type="button"
+                        className="checklist-toggle-btn"
+                        onClick={toggleChecklist}
+                        title="Open checklist"
+                        aria-label="Open checklist"
+                      >
+                        <ListTodo size={15} />
+                        <span className="checklist-toggle-label">Checklist</span>
+                        {pendingTodoCount > 0 && (
+                          <span className="checklist-badge">{pendingTodoCount}</span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </header>
+              )}
               {chat?.messages.length ? (
                 <>
                   <div
@@ -2853,7 +2858,7 @@ export default function Home() {
                                   </ReactMarkdown>
                                 </div>
                               )}
-                              {m.todoActions && m.todoActions.length > 0 && (
+                              {isChecklistBot && m.todoActions && m.todoActions.length > 0 && (
                                 <div className="message-todo-badges">
                                   {m.todoActions.map((act, i) => (
                                     <div key={i} className={`todo-action-badge ${act.action}`}>
@@ -2959,17 +2964,18 @@ export default function Home() {
                 </div>
               )}
             </section>
-            {checklistOpen && (
+            {isChecklistBot && checklistOpen && (
               <div
                 className="checklist-backdrop"
                 onClick={() => setChecklistOpen(false)}
                 aria-label="Close checklist overlay"
               />
             )}
-            <aside
-              className={`checklist-pane ${checklistOpen ? "open" : "collapsed"}`}
-              aria-label="Checklist"
-            >
+            {isChecklistBot && (
+              <aside
+                className={`checklist-pane ${checklistOpen ? "open" : "collapsed"}`}
+                aria-label="Checklist"
+              >
               <div className="checklist-header">
                 <div className="checklist-title-wrap">
                   <h3 className="checklist-title">Checklist</h3>
@@ -3162,6 +3168,7 @@ export default function Home() {
                 <span className="checklist-footer-note">Shared across all chats</span>
               </div>
             </aside>
+            )}
           </div>
         ) : (
           <section className="library">
@@ -3243,31 +3250,12 @@ export default function Home() {
               )}
             </div>
             {view === "bots" && workspace.bots.length > 0 && (
-              <label className="search-box">
-                <Search size={17} />
-                <input
-                  type="text"
-                  placeholder="Search bots by name, category, or description…"
-                  value={botSearch}
-                  onChange={(e) => setBotSearch(e.target.value)}
-                  aria-label="Search bots"
-                />
-                {botSearch && (
-                  <button
-                    type="button"
-                    className="search-box-clear"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setBotSearch("");
-                    }}
-                    aria-label="Clear search"
-                    title="Clear search"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </label>
+              <SearchField
+                placeholder="Search bots by name, category, or description…"
+                value={botSearch}
+                onValueChange={setBotSearch}
+                aria-label="Search bots"
+              />
             )}
             {view === "bots" && (
               <div className="bot-category-filter-bar">
@@ -3291,57 +3279,20 @@ export default function Home() {
               </div>
             )}
             {view === "files" && (workspace.files || []).length > 0 && (
-              <label className="search-box">
-                <Search size={17} />
-                <input
-                  type="text"
-                  placeholder="Search uploaded documents by name or content…"
-                  value={fileSearch}
-                  onChange={(e) => setFileSearch(e.target.value)}
-                  aria-label="Search documents"
-                />
-                {fileSearch && (
-                  <button
-                    type="button"
-                    className="search-box-clear"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setFileSearch("");
-                    }}
-                    aria-label="Clear search"
-                    title="Clear search"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </label>
+              <SearchField
+                placeholder="Search uploaded documents by name or content…"
+                value={fileSearch}
+                onValueChange={setFileSearch}
+                aria-label="Search documents"
+              />
             )}
             {view === "history" && (
-              <label className="search-box">
-                <Search size={17} />
-                <input
-                  placeholder="Search conversations, topics, or messages…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Search conversations"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    className="search-box-clear"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSearch("");
-                    }}
-                    aria-label="Clear search"
-                    title="Clear search"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </label>
+              <SearchField
+                placeholder="Search conversations, topics, or messages…"
+                value={search}
+                onValueChange={setSearch}
+                aria-label="Search conversations"
+              />
             )}
             {view === "history" ? (
               <div className="library-grid history-grid">
@@ -4073,7 +4024,13 @@ export default function Home() {
             <div className="modal-eyebrow"><Sparkles size={16} /> OPENROUTER MODELS</div>
             <h2 id="model-title">Choose your model.</h2>
             <p>Live catalog for text conversations. Your choice is saved for this bot.</p>
-            <label className="search-box"><Search size={17} /><input autoFocus aria-label="Search models" placeholder="Search name or provider…" value={modelSearch} onChange={e => setModelSearch(e.target.value)} /></label>
+            <SearchField
+              autoFocus
+              aria-label="Search models"
+              placeholder="Search name or provider…"
+              value={modelSearch}
+              onValueChange={setModelSearch}
+            />
             <div className="model-catalog-status"><span>{modelsLoading ? "Loading models…" : `${models.length} models · USD per 1M tokens`}</span><button className="text-link" disabled={modelsLoading} onClick={() => setModelsRetry(n => n + 1)}>Refresh</button></div>
             {modelsError && <p role="alert">{modelsError}</p>}
             <div className="model-options">
@@ -4153,106 +4110,90 @@ export default function Home() {
         </div>
       )}
       {importModalOpen && (
-        <div className="modal-backdrop" onClick={() => setImportModalOpen(false)}>
-          <section
-            className="modal import-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="import-title"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <Modal
+          open={importModalOpen}
+          onOpenChange={setImportModalOpen}
+          className="import-modal"
+          closeAriaLabel="Close import dialog"
+          onClose={() => {
+            setImportError("");
+            setImportSuccess("");
+          }}
+          eyebrow={<><Upload size={16} /> BOTS IMPORT</>}
+          title="Import Thinking Partners"
+          description={<>Paste a JSON array of bots, or upload a <code>.json</code> file.</>}
+        >
+          {importError && (
+            <div role="alert" className="error-banner">
+              {importError}
+            </div>
+          )}
+          {importSuccess && (
+            <div role="status" className="success-banner">
+              {importSuccess}
+            </div>
+          )}
+
+          <div className="import-quick-row">
+            <label className="secondary-button file-upload-btn">
+              <Upload size={15} /> Choose .JSON File
+              <input
+                type="file"
+                accept=".json,application/json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const text = event.target?.result as string;
+                    if (text) {
+                      setImportJsonText(text);
+                      setImportError("");
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+            </label>
+          </div>
+
+          <label className="field-label">
+            Bots JSON
+            <textarea
+              rows={10}
+              className="import-textarea"
+              placeholder="[ { &quot;name&quot;: &quot;Steve Jobs&quot;, &quot;category&quot;: &quot;Business and entrepreneurship&quot;, ... } ]"
+              value={importJsonText}
+              onChange={(e) => {
+                setImportJsonText(e.target.value);
+                setImportError("");
+              }}
+            />
+          </label>
+
+          <div className="import-modal-actions">
             <button
               type="button"
-              className="modal-close icon-button"
-              aria-label="Close import dialog"
+              className="secondary-button"
               onClick={() => {
                 setImportModalOpen(false);
                 setImportError("");
                 setImportSuccess("");
               }}
             >
-              <X size={20} />
+              Cancel
             </button>
-            <div className="modal-eyebrow">
-              <Upload size={16} /> BOTS IMPORT
-            </div>
-            <h2 id="import-title">Import Thinking Partners</h2>
-            <p>
-              Paste a JSON array of bots, or upload a <code>.json</code> file.
-            </p>
-
-            {importError && (
-              <div role="alert" className="error-banner">
-                {importError}
-              </div>
-            )}
-            {importSuccess && (
-              <div role="status" className="success-banner">
-                {importSuccess}
-              </div>
-            )}
-
-            <div className="import-quick-row">
-              <label className="secondary-button file-upload-btn">
-                <Upload size={15} /> Choose .JSON File
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      const text = event.target?.result as string;
-                      if (text) {
-                        setImportJsonText(text);
-                        setImportError("");
-                      }
-                    };
-                    reader.readAsText(file);
-                  }}
-                />
-              </label>
-            </div>
-
-            <label className="field-label">
-              Bots JSON
-              <textarea
-                rows={10}
-                className="import-textarea"
-                placeholder="[ { &quot;name&quot;: &quot;Steve Jobs&quot;, &quot;category&quot;: &quot;Business and entrepreneurship&quot;, ... } ]"
-                value={importJsonText}
-                onChange={(e) => {
-                  setImportJsonText(e.target.value);
-                  setImportError("");
-                }}
-              />
-            </label>
-
-            <div className="import-modal-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  setImportModalOpen(false);
-                  setImportError("");
-                  setImportSuccess("");
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                disabled={!importJsonText.trim()}
-                onClick={() => handleImportJson(importJsonText)}
-              >
-                <Check size={16} /> Import Bots
-              </button>
-            </div>
-          </section>
-        </div>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!importJsonText.trim()}
+              onClick={() => handleImportJson(importJsonText)}
+            >
+              <Check size={16} /> Import Bots
+            </button>
+          </div>
+        </Modal>
       )}
       {selectedFileForView && (
         <div className="modal-backdrop" onClick={() => setSelectedFileForView(null)}>
@@ -4330,32 +4271,19 @@ export default function Home() {
       )}
 
       {newDocModalOpen && (
-        <div className="modal-backdrop" onClick={() => setNewDocModalOpen(false)}>
+        <Modal
+          open={newDocModalOpen}
+          onOpenChange={setNewDocModalOpen}
+          eyebrow={<><Plus size={16} /> ADD TEXT DOCUMENT</>}
+          title="Create or paste document."
+          description="Add text, notes, guidelines, or reference material for all bots to use with RAG."
+        >
           <form
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="new-doc-title"
-            onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {
               e.preventDefault();
               handleCreateDocument();
             }}
           >
-            <button
-              type="button"
-              className="modal-close icon-button"
-              aria-label="Close new document dialog"
-              onClick={() => setNewDocModalOpen(false)}
-            >
-              <X size={20} />
-            </button>
-            <div className="modal-eyebrow">
-              <Plus size={16} /> ADD TEXT DOCUMENT
-            </div>
-            <h2 id="new-doc-title">Create or paste document.</h2>
-            <p>Add text, notes, guidelines, or reference material for all bots to use with RAG.</p>
-
             <label className="modal-field" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 16 }}>
               <span style={{ fontSize: 12, color: "#8a9599", fontWeight: 500 }}>Document Name / Title</span>
               <input
@@ -4397,7 +4325,7 @@ export default function Home() {
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
     </div>
   );
