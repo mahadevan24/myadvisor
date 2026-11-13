@@ -503,3 +503,72 @@ export const CURATED_BOTS: Bot[] = [
     ],
   },
 ];
+
+export function filterBotsByQuery(
+  groupedBots: Record<string, Bot[]>,
+  query: string
+): Record<string, Bot[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return groupedBots;
+  const filtered: Record<string, Bot[]> = {};
+  for (const [cat, botsInCat] of Object.entries(groupedBots)) {
+    const catMatches = cat.toLowerCase().includes(q);
+    const matchingBots = botsInCat.filter(
+      (b) =>
+        catMatches ||
+        b.name.toLowerCase().includes(q) ||
+        (b.description && b.description.toLowerCase().includes(q)) ||
+        (b.category && b.category.toLowerCase().includes(q)) ||
+        (b.model && b.model.toLowerCase().includes(q))
+    );
+    if (matchingBots.length > 0) {
+      filtered[cat] = matchingBots;
+    }
+  }
+  return filtered;
+}
+
+export interface DropdownPositionParams {
+  rectTop: number;
+  rectBottom: number;
+  headerBottom?: number;
+  windowHeight: number;
+  minHeight?: number;
+  maxHeight?: number;
+}
+
+export function calculateDropdownPosition(params: DropdownPositionParams): {
+  direction: "up" | "down";
+  maxHeight: number;
+} {
+  const {
+    rectTop,
+    rectBottom,
+    headerBottom = 0,
+    windowHeight,
+    minHeight = 120,
+    maxHeight: maxLimit = 380,
+  } = params;
+
+  const topSafeEdge = Math.max(headerBottom + 10, 16);
+  const bottomSafeEdge = windowHeight - 16;
+
+  const safeSpaceAbove = Math.max(0, rectTop - 8 - topSafeEdge);
+  const safeSpaceBelow = Math.max(0, bottomSafeEdge - (rectBottom + 8));
+
+  let direction: "up" | "down" = "up";
+  let calculatedMaxHeight = 320;
+
+  if (safeSpaceAbove < 180 && safeSpaceBelow > safeSpaceAbove) {
+    direction = "down";
+    calculatedMaxHeight = Math.max(minHeight, Math.min(maxLimit, safeSpaceBelow));
+  } else if (safeSpaceAbove >= safeSpaceBelow) {
+    direction = "up";
+    calculatedMaxHeight = Math.max(minHeight, Math.min(maxLimit, safeSpaceAbove));
+  } else {
+    direction = "down";
+    calculatedMaxHeight = Math.max(minHeight, Math.min(maxLimit, safeSpaceBelow));
+  }
+
+  return { direction, maxHeight: calculatedMaxHeight };
+}
