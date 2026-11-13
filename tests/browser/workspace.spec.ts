@@ -64,6 +64,28 @@ test("seeded bots can be deleted and stay deleted", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Nova", exact: true })).toHaveCount(0);
 });
 
+test("my bots search filters bots by query and shows empty state when no match", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "My bots", exact: true }).click();
+  const searchInput = page.getByLabel("Search bots");
+  await expect(searchInput).toBeVisible();
+
+  // Search by name
+  await searchInput.fill("Steve");
+  await expect(page.getByRole("heading", { name: "Steve Jobs", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Jeff Bezos", exact: true })).toHaveCount(0);
+
+  // Clear search
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(searchInput).toHaveValue("");
+  await expect(page.getByRole("heading", { name: "Steve Jobs", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Jeff Bezos", exact: true })).toBeVisible();
+
+  // No match
+  await searchInput.fill("nonexistentquery12345");
+  await expect(page.getByText("No matching bots found.")).toBeVisible();
+});
+
 test("catalog recovers from failure, empty search works, and key verification is truthful", async ({ page }) => {
   let failure = true;
   await page.route("**/api/models", async route => failure
