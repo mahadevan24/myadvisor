@@ -145,12 +145,12 @@ export default function SpaceBackground() {
     const moonBaseSpeed = 0.38;
     let moon: MoonState = {
       active: false,
-      x: -moonRadius * 2,
+      x: -(moonRadius * 2 + 20),
       y: 120,
       radius: moonRadius,
       vx: dirX * moonBaseSpeed,
       vy: dirY * moonBaseSpeed,
-      alpha: 0,
+      alpha: 0.85,
       nextAppearanceTime: performance.now() + 5000, // Starts first pass in ~5 seconds
     };
 
@@ -349,23 +349,15 @@ export default function SpaceBackground() {
         moon.x += moon.vx * deltaFactor;
         moon.y += moon.vy * deltaFactor;
 
-        // Smooth fade-in on entrance and fade-out on exit
-        if (moon.x < 140) {
-          moon.alpha = Math.min(0.85, moon.alpha + 0.008 * deltaFactor);
-        } else if (moon.x > width - 140) {
-          moon.alpha = Math.max(0, moon.alpha - 0.008 * deltaFactor);
-        } else {
-          moon.alpha = 0.85;
-        }
-
         ctx.save();
         ctx.globalAlpha = moon.alpha;
         const drawSize = moon.radius * 4;
         ctx.drawImage(offscreenMoon, moon.x - drawSize / 2, moon.y - drawSize / 2, drawSize, drawSize);
         ctx.restore();
 
-        // Check if Moon has crossed the screen
-        if (moon.x > width + moon.radius * 2 || moon.y > height + moon.radius * 2) {
+        // Check if Moon has crossed completely past the screen boundary
+        const exitOffset = moon.radius * 2 + 20;
+        if (moon.x > width + exitOffset || moon.y > height + exitOffset) {
           moon.active = false;
           // Next orbital pass in ~70 to 110 seconds
           moon.nextAppearanceTime = currentTime + 70000 + Math.random() * 40000;
@@ -373,12 +365,12 @@ export default function SpaceBackground() {
       } else if (currentTime > moon.nextAppearanceTime && !moon.active) {
         // Spawn Moon along the orbital plane moving along with stars sky
         moon.active = true;
-        moon.x = -moon.radius * 2;
+        moon.x = -(moon.radius * 2 + 20);
         moon.y = Math.random() * (height * 0.35) + 40;
         const moonSpeed = 0.34 + Math.random() * 0.08;
         moon.vx = dirX * moonSpeed;
         moon.vy = dirY * moonSpeed;
-        moon.alpha = 0;
+        moon.alpha = 0.85;
       }
 
       // 5. Periodic Shooting Stars / Falling Stars
