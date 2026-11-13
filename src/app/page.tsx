@@ -14,6 +14,7 @@ import {
   FileText,
   KeyRound,
   Layers3,
+  Lock,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -52,6 +53,13 @@ import {
   needsCompaction,
 } from "@/lib/memory";
 import { authToken, connectCloud, disconnectCloud, firebaseConfigured, saveCloud, watchAuth } from "@/lib/firebase";
+import {
+  decryptWorkspace,
+  getLocalEncryptionKey,
+  hasCustomPassphrase,
+  setCustomPassphrase,
+  clearCustomPassphrase,
+} from "@/lib/crypto";
 import { readStream } from "@/lib/stream";
 import type { Model } from "@/lib/models";
 
@@ -379,6 +387,17 @@ export default function Home() {
   const [modelPicker, setModelPicker] = useState<"chat" | "editor" | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [settings, setSettings] = useState(false);
+  const [encryptedUnlockData, setEncryptedUnlockData] = useState<{ uid: string; rawData: any } | null>(null);
+  const [unlockPassphrase, setUnlockPassphrase] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [hasCustomPass, setHasCustomPass] = useState(false);
+  const [passphraseInput, setPassphraseInput] = useState("");
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [cryptoSuccessMsg, setCryptoSuccessMsg] = useState("");
+
+  useEffect(() => {
+    setHasCustomPass(hasCustomPassphrase());
+  }, []);
   const [editor, setEditor] = useState<Bot | null>(null);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
@@ -875,7 +894,14 @@ export default function Home() {
     } catch {}
 
     setSync("Syncing…");
-    void connectCloud(false).then(({ uid, workspace: saved }) => {
+    void connectCloud(false).then((result) => {
+      const { uid, workspace: saved, needsPassphrase } = result;
+      if (needsPassphrase) {
+        setCloudUid(uid);
+        setSync("Encrypted (Locked)");
+        setEncryptedUnlockData({ uid, rawData: (result as any).rawEncryptedData });
+        return;
+      }
       const recovered = recoverCustomBots();
       if (saved) {
         setWorkspace((current) => {
@@ -1446,6 +1472,12 @@ export default function Home() {
     setError("");
     try {
       const connected = await connectCloud(google);
+      if (connected.needsPassphrase) {
+        setCloudUid(connected.uid);
+        setSync("Encrypted (Locked)");
+        setEncryptedUnlockData({ uid: connected.uid, rawData: (connected as any).rawEncryptedData });
+        return;
+      }
       const ws = connected.workspace || initialWorkspace;
       setWorkspace(ws);
       setCloudUid(connected.uid);
@@ -1516,6 +1548,66 @@ export default function Home() {
     a.download = "myadvisor-workspace.json";
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+  async function handleUnlock() {
+    if (!encryptedUnlockData || !unlockPassphrase.trim()) return;
+    setUnlockError("");
+    try {
+      const decrypted = await decryptWorkspace(encryptedUnlockData.rawData, unlockPassphrase.trim());
+      setCustomPassphrase(unlockPassphrase.trim());
+      setHasCustomPass(true);
+      const recovered = recoverCustomBots();
+      const mergedBots = mergeBots(decrypted.bots, recovered);
+      const mergedWorkspace: Workspace = { ...decrypted, bots: mergedBots };
+      setWorkspace(mergedWorkspace);
+      try {
+        localStorage.setItem(`myadvisor.workspace.v1.${encryptedUnlockData.uid}`, JSON.stringify(mergedWorkspace));
+      } catch {}
+      setEncryptedUnlockData(null);
+      setUnlockPassphrase("");
+      setSync("Cloud connected");
+      void saveCloud(encryptedUnlockData.uid, mergedWorkspace, unlockPassphrase.trim()).catch(() => {});
+    } catch {
+      setUnlockError("Incorrect passphrase or encryption key. Could not decrypt.");
+    }
+  }
+
+  function handleSavePassphrase() {
+    if (!passphraseInput.trim()) return;
+    const pass = passphraseInput.trim();
+    setCustomPassphrase(pass);
+    setHasCustomPass(true);
+    setPassphraseInput("");
+    setCryptoSuccessMsg("Custom passphrase saved. Workspace will sync encrypted with this passphrase.");
+    setTimeout(() => setCryptoSuccessMsg(""), 3500);
+    if (cloudUid) {
+      setSync("Syncing…");
+      void saveCloud(cloudUid, workspace, pass)
+        .then(() => setSync("Cloud synced (encrypted)"))
+        .catch(() => setSync("Sync failed"));
+    }
+  }
+
+  function handleResetToDeviceKey() {
+    clearCustomPassphrase();
+    setHasCustomPass(false);
+    setPassphraseInput("");
+    setCryptoSuccessMsg("Reset to automatic device encryption key.");
+    setTimeout(() => setCryptoSuccessMsg(""), 3500);
+    if (cloudUid) {
+      setSync("Syncing…");
+      void saveCloud(cloudUid, workspace)
+        .then(() => setSync("Cloud synced (encrypted)"))
+        .catch(() => setSync("Sync failed"));
+    }
+  }
+
+  function handleCopyDeviceKey() {
+    const activeKey = getLocalEncryptionKey(cloudUid || undefined);
+    void navigator.clipboard?.writeText(activeKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
   }
   function deleteBot(target: Bot) {
     const conversationCount = workspace.chats.filter(
@@ -2517,7 +2609,60 @@ export default function Home() {
               to this browser. Every Firebase UID has isolated workspace data and
               its own encrypted OpenRouter key.
             </p>
-            <button className="export-button" onClick={exportData}>
+            <div className="settings-divider" />
+            <h3>End-to-End Encryption (AES-256-GCM)</h3>
+            <div className="crypto-badge">
+              <ShieldCheck size={14} />
+              <span>Encryption at Rest: <strong>Active (AES-256-GCM)</strong></span>
+            </div>
+            <p className="field-help">
+              <Lock size={13} /> Your conversations, bots, and notes are encrypted client-side using authenticated AES-256-GCM before saving to Firebase. Data in the cloud cannot be read by anyone without your key.
+            </p>
+            <div className="field-help" style={{ marginBottom: 6 }}>
+              Key mode: <strong>{hasCustomPass ? "Custom Passphrase" : "Automatic Device Key"}</strong>
+            </div>
+            {cryptoSuccessMsg && (
+              <p className="field-help" style={{ color: "#4ade80" }}>
+                <Check size={13} /> {cryptoSuccessMsg}
+              </p>
+            )}
+            <label className="field-label" style={{ marginTop: 8 }}>
+              Cross-Device Passphrase (Optional)
+              <input
+                autoComplete="off"
+                type="password"
+                placeholder={hasCustomPass ? "Passphrase active (type new to change)" : "Set a passphrase to sync to other devices"}
+                value={passphraseInput}
+                onChange={(e) => setPassphraseInput(e.target.value)}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!passphraseInput.trim()}
+                onClick={handleSavePassphrase}
+              >
+                Save Passphrase
+              </button>
+              {hasCustomPass && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleResetToDeviceKey}
+                >
+                  Reset to Device Key
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleCopyDeviceKey}
+              >
+                {copiedKey ? "Key Copied to Clipboard!" : "Copy Device Key"}
+              </button>
+            </div>
+            <button className="export-button" onClick={exportData} style={{ marginTop: 14 }}>
               <Download size={16} /> Export workspace backup
             </button>
             <button
@@ -2529,6 +2674,60 @@ export default function Home() {
             >
               <Check size={16} /> Done
             </button>
+          </section>
+        </div>
+      )}
+      {encryptedUnlockData && (
+        <div className="modal-backdrop">
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unlock-title"
+          >
+            <div className="modal-eyebrow">
+              <Lock size={16} /> ENCRYPTED WORKSPACE
+            </div>
+            <h2 id="unlock-title">Unlock your encrypted workspace.</h2>
+            <p>
+              Your cloud workspace was encrypted on another device or with a custom passphrase. Enter your passphrase or device encryption key to decrypt and sync.
+            </p>
+            {unlockError && (
+              <div role="alert" className="error-banner">
+                {unlockError}
+              </div>
+            )}
+            <label className="field-label">
+              Passphrase or Encryption Key
+              <input
+                autoComplete="off"
+                type="password"
+                placeholder="Enter passphrase or key…"
+                value={unlockPassphrase}
+                onChange={(e) => setUnlockPassphrase(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleUnlock();
+                }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button
+                className="primary-button"
+                disabled={!unlockPassphrase.trim()}
+                onClick={() => void handleUnlock()}
+              >
+                <Check size={16} /> Unlock & Sync
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setEncryptedUnlockData(null);
+                  setSync("Decryption skipped (offline)");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </section>
         </div>
       )}
