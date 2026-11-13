@@ -98,22 +98,9 @@ export type Workspace = {
   deletedBotIds?: string[];
 };
 export const initialWorkspace: Workspace = {
-  defaultBotId: "nova",
+  defaultBotId: "elon-musk",
   deletedBotIds: [],
-  bots: [
-    {
-      id: "nova",
-      name: "Nova",
-      category: "General",
-      description: "Your curious, all-purpose thinking partner.",
-      instructions:
-        "You are Nova, a curious, thoughtful thinking partner. Be clear, warm and concise. Help explore ideas, ask useful questions, and be honest about uncertainty.",
-      model: "openai/gpt-4o-mini",
-      color: "mint",
-      symbol: "✳",
-    },
-    ...CURATED_BOTS,
-  ],
+  bots: [...CURATED_BOTS],
   chats: [],
   entries: [],
   todos: [],

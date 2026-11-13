@@ -52,26 +52,26 @@ test("model selection is searchable, persists per bot and reaches chat API", asy
   await page.getByLabel("Search models").fill("google");
   await page.getByRole("button", { name: /Google: Test Free/ }).click();
   await expect(page.getByLabel("OpenRouter model ID")).toHaveValue("google/test-free");
-  await page.getByLabel("Name", { exact: true }).fill("Nova edited");
+  await page.getByLabel("Name", { exact: true }).fill("Elon Musk edited");
   await page.getByRole("button", { name: "blue color" }).click();
   await page.getByRole("button", { name: "Save bot" }).click();
   await expect(page.getByRole("button", { name: "Choose model: google/test-free", exact: true })).toBeVisible();
-  await expect(page.locator(".bot-nav.selected")).toContainText("Nova edited");
+  await expect(page.locator(".bot-nav.selected")).toContainText("Elon Musk edited");
 });
 
 test("seeded bots can be deleted and stay deleted", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "My bots", exact: true }).click();
-  await page.getByRole("button", { name: "Edit Nova", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Elon Musk", exact: true }).click();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete bot", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Nova", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Elon Musk", exact: true })).toHaveCount(0);
   await expect(page.locator(".bot-nav")).toHaveCount(2);
   await page.reload();
   await page.getByRole("button", { name: "My bots", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Nova", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Elon Musk", exact: true })).toHaveCount(0);
 });
 
 test("my bots search filters bots by query and shows empty state when no match", async ({ page }) => {
@@ -127,8 +127,8 @@ test("wiki search, source navigation, deletion and backup download work", async 
   await page.route("**/api/chat", route => route.fulfill({ contentType: "text/event-stream", body: sse }));
   await page.goto("/");
   await connect(page);
-  await page.getByRole("button", { name: /Ask Nova/ }).click();
-  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(/Introduce yourself as Nova/);
+  await page.getByRole("button", { name: /First principles/ }).click();
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(/Help me analyze a difficult problem from first principles/);
   await page.getByRole("textbox", { name: "Message", exact: true }).fill("Neural network notes");
   await page.keyboard.press("Enter");
   await expect(page.locator(".message.assistant")).toContainText("Start with a small experiment.");
@@ -293,7 +293,7 @@ test("long conversation compacts before streaming and saves summary", async ({
     data.chats = [
       {
         id: "long",
-        botId: "nova",
+        botId: "elon-musk",
         title: "Long memory test",
         summary: "",
         compactedCount: 0,

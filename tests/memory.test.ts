@@ -361,11 +361,11 @@ test("retrieval on greeting returns most recent bot entries for grounding life j
 test("buildContext instructs only productivity and self-improvement bots to ask about goals, while other bots like Osho behave as they are", () => {
   const prodBot = CURATED_BOTS.find((b) => b.category === "Productivity and self-improvement")!;
   const oshoBot = CURATED_BOTS.find((b) => b.id === "osho")!;
-  const novaBot = initialWorkspace.bots[0];
+  const elonBot = initialWorkspace.bots[0];
 
   assert.ok(isProductivityBot(prodBot));
   assert.equal(isProductivityBot(oshoBot), false);
-  assert.equal(isProductivityBot(novaBot), false);
+  assert.equal(isProductivityBot(elonBot), false);
 
   const chatWithHi: Chat = {
     ...chat,
@@ -412,20 +412,20 @@ test("buildContext instructs only productivity and self-improvement bots to ask 
   assert.ok(!oshoSystemPrompt.includes("challenge them to state their primary goals"));
   assert.ok(!oshoSystemPrompt.includes("what they promised to achieve versus what they actually did"));
 
-  // 3. Nova (General) also behaves naturally without goal interrogation
-  const novaChat: Chat = {
+  // 3. Elon Musk behaves naturally without goal interrogation
+  const elonChat: Chat = {
     ...chat,
-    botId: novaBot.id,
+    botId: elonBot.id,
     messages: [{ id: "1", role: "user", content: "hi" }],
   };
-  const { messages: novaMessages } = buildContext(novaChat, novaBot, []);
-  const novaSystemPrompt = novaMessages[0].content as string;
+  const { messages: elonMessages } = buildContext(elonChat, elonBot, []);
+  const elonSystemPrompt = elonMessages[0].content as string;
 
-  assert.ok(novaSystemPrompt.includes("You are Nova"));
-  assert.ok(!novaSystemPrompt.includes("When the user greets you"));
-  assert.ok(!novaSystemPrompt.includes("harsh in truth"));
-  assert.ok(!novaSystemPrompt.includes("Directly demand concrete updates on their ongoing goals"));
-  assert.ok(!novaSystemPrompt.includes("challenge them to state their primary goals"));
+  assert.ok(elonSystemPrompt.includes("You are Elon Musk"));
+  assert.ok(!elonSystemPrompt.includes("When the user greets you"));
+  assert.ok(!elonSystemPrompt.includes("harsh in truth"));
+  assert.ok(!elonSystemPrompt.includes("Directly demand concrete updates on their ongoing goals"));
+  assert.ok(!elonSystemPrompt.includes("challenge them to state their primary goals"));
 });
 
 test("buildContext includes current date, time, and year in temporal context", () => {
@@ -521,7 +521,7 @@ test("mergeBots preserves custom imported bots and avoids losing bots during clo
 
   const merged = mergeBots(savedCloudBots, localBots);
   assert.ok(merged.some((b) => b.id === "bot-custom-1"));
-  assert.ok(merged.some((b) => b.id === "nova"));
+  assert.ok(merged.some((b) => b.id === "elon-musk"));
   assert.ok(merged.some((b) => b.name === "Steve Jobs"));
 
   // Merging another imported bot list keeps both custom bots

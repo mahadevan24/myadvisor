@@ -297,6 +297,9 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
     const lastUid = preferredUid || localStorage.getItem("myadvisor.lastUid");
 
     const processWorkspace = (data: any, uid: string): Workspace => {
+      if (Array.isArray(data.bots)) {
+        data.bots = data.bots.filter((b: any) => b && b.id !== "nova" && b.name?.toLowerCase().trim() !== "nova");
+      }
       const allDeleted = Array.from(
         new Set([...(Array.isArray(data.deletedBotIds) ? data.deletedBotIds : []), ...storedDeleted]),
       );
@@ -314,10 +317,12 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
       data.bots = mergeBots(data.bots, recovered, deletedSet);
       data.todos = Array.isArray(data.todos) ? data.todos : [];
       data.files = Array.isArray(data.files) ? data.files : [];
-      if (!data.defaultBotId) {
+      if (!data.defaultBotId || data.defaultBotId === "nova") {
         const candidate = localStorage.getItem("myadvisor.defaultBotId");
-        if (candidate && data.bots.some((b: Bot) => b.id === candidate)) {
+        if (candidate && candidate !== "nova" && data.bots.some((b: Bot) => b.id === candidate)) {
           data.defaultBotId = candidate;
+        } else if (data.bots.some((b: Bot) => b.id === "elon-musk")) {
+          data.defaultBotId = "elon-musk";
         } else if (data.bots[0]?.id) {
           data.defaultBotId = data.bots[0].id;
         }
@@ -414,28 +419,28 @@ export default function Home() {
       try {
         const cached = getStoredWorkspace();
         const candidate = localStorage.getItem("myadvisor.defaultBotId") || cached?.workspace.defaultBotId;
-        if (candidate && (!cached?.workspace.bots.length || cached.workspace.bots.some((b) => b.id === candidate))) {
+        if (candidate && candidate !== "nova" && (!cached?.workspace.bots.length || cached.workspace.bots.some((b) => b.id === candidate))) {
           return candidate;
         }
-        if (cached?.workspace.bots[0]?.id) return cached.workspace.bots[0].id;
-        return "nova";
+        if (cached?.workspace.bots[0]?.id && cached.workspace.bots[0].id !== "nova") return cached.workspace.bots[0].id;
+        return "elon-musk";
       } catch {}
     }
-    return "nova";
+    return "elon-musk";
   });
   const [botId, setBotId] = useState<string>(() => {
     if (typeof window !== "undefined") {
       try {
         const cached = getStoredWorkspace();
         const candidate = localStorage.getItem("myadvisor.defaultBotId") || cached?.workspace.defaultBotId;
-        if (candidate && (!cached?.workspace.bots.length || cached.workspace.bots.some((b) => b.id === candidate))) {
+        if (candidate && candidate !== "nova" && (!cached?.workspace.bots.length || cached.workspace.bots.some((b) => b.id === candidate))) {
           return candidate;
         }
-        if (cached?.workspace.bots[0]?.id) return cached.workspace.bots[0].id;
-        return "nova";
+        if (cached?.workspace.bots[0]?.id && cached.workspace.bots[0].id !== "nova") return cached.workspace.bots[0].id;
+        return "elon-musk";
       } catch {}
     }
-    return "nova";
+    return "elon-musk";
   });
   const [recentBotIds, setRecentBotIds] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
@@ -1333,11 +1338,11 @@ export default function Home() {
             (b) => !isCuratedBot(b) && !deletedSet.has(b.id) && !saved.bots.some((sb) => sb.id === b.id)
           );
           const mergedBots = mergeBots(saved.bots, [...guestCustomBots, ...recovered], deletedSet);
-          const targetDefault = (saved.defaultBotId && mergedBots.some((b: Bot) => b.id === saved.defaultBotId))
+          const targetDefault = (saved.defaultBotId && saved.defaultBotId !== "nova" && mergedBots.some((b: Bot) => b.id === saved.defaultBotId))
             ? saved.defaultBotId
-            : (localStorage.getItem("myadvisor.defaultBotId") && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
+            : (localStorage.getItem("myadvisor.defaultBotId") && localStorage.getItem("myadvisor.defaultBotId") !== "nova" && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
               ? localStorage.getItem("myadvisor.defaultBotId")!
-              : (mergedBots[0]?.id || "nova");
+              : (mergedBots.find((b: Bot) => b.id === "elon-musk")?.id || mergedBots[0]?.id || "elon-musk");
 
           setDefaultBotId(targetDefault);
           setBotId(targetDefault);
@@ -1362,11 +1367,11 @@ export default function Home() {
       } else {
         setWorkspace((current) => {
           const mergedBots = mergeBots(current.bots, recovered, deletedSet);
-          const targetDefault = (current.defaultBotId && mergedBots.some((b: Bot) => b.id === current.defaultBotId))
+          const targetDefault = (current.defaultBotId && current.defaultBotId !== "nova" && mergedBots.some((b: Bot) => b.id === current.defaultBotId))
             ? current.defaultBotId
-            : (localStorage.getItem("myadvisor.defaultBotId") && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
+            : (localStorage.getItem("myadvisor.defaultBotId") && localStorage.getItem("myadvisor.defaultBotId") !== "nova" && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
               ? localStorage.getItem("myadvisor.defaultBotId")!
-              : (mergedBots[0]?.id || "nova");
+              : (mergedBots.find((b: Bot) => b.id === "elon-musk")?.id || mergedBots[0]?.id || "elon-musk");
 
           setDefaultBotId(targetDefault);
           setBotId(targetDefault);
@@ -2020,11 +2025,11 @@ export default function Home() {
       const baseWorkspace = connected.workspace || initialWorkspace;
       const mergedBots = mergeBots(baseWorkspace.bots, recovered, deletedSet);
 
-      const targetDefault = (baseWorkspace.defaultBotId && mergedBots.some((b: Bot) => b.id === baseWorkspace.defaultBotId))
+      const targetDefault = (baseWorkspace.defaultBotId && baseWorkspace.defaultBotId !== "nova" && mergedBots.some((b: Bot) => b.id === baseWorkspace.defaultBotId))
         ? baseWorkspace.defaultBotId
-        : (localStorage.getItem("myadvisor.defaultBotId") && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
+        : (localStorage.getItem("myadvisor.defaultBotId") && localStorage.getItem("myadvisor.defaultBotId") !== "nova" && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
           ? localStorage.getItem("myadvisor.defaultBotId")!
-          : (mergedBots[0]?.id || "nova");
+          : (mergedBots.find((b: Bot) => b.id === "elon-musk")?.id || mergedBots[0]?.id || "elon-musk");
 
       setDefaultBotId(targetDefault);
       setBotId(targetDefault);
@@ -2130,11 +2135,11 @@ export default function Home() {
       const recovered = recoverCustomBots(deletedSet);
       const mergedBots = mergeBots(decrypted.bots, recovered, deletedSet);
 
-      const targetDefault = (decrypted.defaultBotId && mergedBots.some((b: Bot) => b.id === decrypted.defaultBotId))
+      const targetDefault = (decrypted.defaultBotId && decrypted.defaultBotId !== "nova" && mergedBots.some((b: Bot) => b.id === decrypted.defaultBotId))
         ? decrypted.defaultBotId
-        : (localStorage.getItem("myadvisor.defaultBotId") && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
+        : (localStorage.getItem("myadvisor.defaultBotId") && localStorage.getItem("myadvisor.defaultBotId") !== "nova" && mergedBots.some((b: Bot) => b.id === localStorage.getItem("myadvisor.defaultBotId")))
           ? localStorage.getItem("myadvisor.defaultBotId")!
-          : (mergedBots[0]?.id || "nova");
+          : (mergedBots.find((b: Bot) => b.id === "elon-musk")?.id || mergedBots[0]?.id || "elon-musk");
 
       setDefaultBotId(targetDefault);
       setBotId(targetDefault);
@@ -3549,7 +3554,7 @@ export default function Home() {
                     <p>
                       Upload text documents or notes to ground your AI companions with your personal knowledge.
                       <br />
-                      All bots (Nova, Steve Jobs, Seneca, custom bots) will automatically retrieve and cite relevant passages from these files during conversations.
+                      All bots (Elon Musk, Steve Jobs, Seneca, custom bots) will automatically retrieve and cite relevant passages from these files during conversations.
                     </p>
                     <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
                       <button

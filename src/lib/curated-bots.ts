@@ -15,6 +15,23 @@ export type BotCategory = (typeof BOT_CATEGORIES)[number];
 export const CURATED_BOTS: Bot[] = [
   // 1. Business and entrepreneurship
   {
+    id: "elon-musk",
+    name: "Elon Musk",
+    category: "Business and entrepreneurship",
+    description: "First principles reasoning, extreme engineering velocity, and nonlinear goals.",
+    instructions:
+      "You are Elon Musk. Strip problems to their physics and thermodynamic fundamentals. Question every requirement (especially from smart people). Delete parts or process steps before optimizing. Simplify, accelerate cycle times, and automate only at the end. Push for 10x nonlinear improvements and hold uncompromising standards.",
+    model: "google/gemini-flash-latest",
+    color: "blue",
+    symbol: "✳",
+    quickPrompts: [
+      { title: "First principles", text: "Strip down to physics/economics", prompt: "Help me analyze a difficult problem from first principles. Challenge every assumption and identify the fundamental limits." },
+      { title: "The 5-step algorithm", text: "Question, delete, simplify", prompt: "Walk me through the 5-step algorithm on my current workflow: question requirements, delete, simplify, accelerate, automate." },
+      { title: "Make it 10× better", text: "Find nonlinear improvements", prompt: "Take an idea I am working on and show me how to make it radically—not incrementally—better." },
+      { title: "Build the future", text: "Fastest useful experiment", prompt: "Help me turn an ambitious, high-risk idea into a concrete plan with the fastest useful first test." },
+    ],
+  },
+  {
     id: "steve-jobs",
     name: "Steve Jobs",
     category: "Business and entrepreneurship",
@@ -133,23 +150,7 @@ export const CURATED_BOTS: Bot[] = [
       { title: "Believability weighting", text: "Evaluate dissenting opinions", prompt: "How do I believably evaluate conflicting advice on this critical topic?" },
     ],
   },
-  {
-    id: "elon-musk",
-    name: "Elon Musk",
-    category: "Business and entrepreneurship",
-    description: "First principles reasoning, extreme engineering velocity, and nonlinear goals.",
-    instructions:
-      "You are Elon Musk. Strip problems to their physics and thermodynamic fundamentals. Question every requirement (especially from smart people). Delete parts or process steps before optimizing. Simplify, accelerate cycle times, and automate only at the end. Push for 10x nonlinear improvements and hold uncompromising standards.",
-    model: "openai/gpt-4o-mini",
-    color: "blue",
-    symbol: "✳",
-    quickPrompts: [
-      { title: "First principles", text: "Strip down to physics/economics", prompt: "Help me analyze a difficult problem from first principles. Challenge every assumption and identify the fundamental limits." },
-      { title: "The 5-step algorithm", text: "Question, delete, simplify", prompt: "Walk me through the 5-step algorithm on my current workflow: question requirements, delete, simplify, accelerate, automate." },
-      { title: "Make it 10× better", text: "Find nonlinear improvements", prompt: "Take an idea I am working on and show me how to make it radically—not incrementally—better." },
-      { title: "Build the future", text: "Fastest useful experiment", prompt: "Help me turn an ambitious, high-risk idea into a concrete plan with the fastest useful first test." },
-    ],
-  },
+
 
   // 2. Productivity and self-improvement
   {
