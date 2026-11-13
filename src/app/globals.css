@@ -1503,32 +1503,26 @@ button:hover:not(:disabled) {
   align-items: center;
   gap: 5px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid transparent;
   color: #c4c7c5;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 9999px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .composer-mode-pill .composer-mode-icon {
-  color: var(--accent);
+  color: #9aa0a6;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
 }
 .composer-mode-pill:hover {
   background: #2a2c30;
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.14);
 }
-.composer-mode-pill.active {
-  color: var(--accent);
-  border-color: rgba(204, 120, 92, 0.38);
-  background: rgba(204, 120, 92, 0.12);
-}
-.composer-mode-pill.active:hover {
-  background: rgba(204, 120, 92, 0.2);
-  border-color: rgba(204, 120, 92, 0.5);
-  color: var(--accent-hover);
+.composer-mode-pill:hover .composer-mode-icon {
+  color: #ffffff;
 }
 .composer-icon-btn {
   width: 34px;
