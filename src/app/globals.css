@@ -368,40 +368,10 @@ button:hover:not(:disabled) {
   padding: 1px 5px;
   border-radius: 9999px;
 }
-.bot-nav-row {
-  display: flex;
-  align-items: center;
-  position: relative;
-  width: 100%;
-}
-.bot-nav-row:hover .bot-default-star {
-  opacity: 1;
-}
 .bot-nav-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.bot-default-star {
-  background: transparent;
-  border: none;
-  color: #555a64;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  margin-right: 4px;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
-}
-.bot-default-star.active {
-  opacity: 1;
-  color: var(--accent);
-}
-.bot-default-star:hover {
-  color: var(--accent);
 }
 .sidebar-quick-bots {
   display: flex;

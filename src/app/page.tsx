@@ -2511,33 +2511,20 @@ export default function Home() {
         <div className="nav-label">QUICK ACCESS</div>
         <div className="sidebar-quick-bots">
           {recentBots.map((b) => (
-            <div key={b.id} className="bot-nav-row">
-              <button
-                disabled={busy}
-                onClick={() => {
-                  newChat(b.id);
-                  closeSidebarOnMobile();
-                }}
-                className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
-                title={b.name}
-              >
-                <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-                <span className="bot-nav-text">{b.name}</span>
-                <span className="online-dot" />
-              </button>
-              <button
-                type="button"
-                className={`bot-default-star ${b.id === defaultBotId ? "active" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDefaultBot(b.id);
-                }}
-                title={b.id === defaultBotId ? "Default bot for new chats" : "Set as default bot"}
-                aria-label={b.id === defaultBotId ? `${b.name} is default bot` : `Set ${b.name} as default bot`}
-              >
-                <Star size={12} fill={b.id === defaultBotId ? "currentColor" : "none"} />
-              </button>
-            </div>
+            <button
+              key={b.id}
+              disabled={busy}
+              onClick={() => {
+                newChat(b.id);
+                closeSidebarOnMobile();
+              }}
+              className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
+              title={b.name}
+            >
+              <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+              <span className="bot-nav-text">{b.name}</span>
+              <span className="online-dot" />
+            </button>
           ))}
         </div>
         <div className="sidebar-bottom">
