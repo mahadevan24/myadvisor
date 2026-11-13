@@ -2567,29 +2567,17 @@ export default function Home() {
           aria-label="Close sidebar"
         />
       )}
-      {sidebarCollapsed && (
-        <button
-          type="button"
-          className="sidebar-expand-btn"
-          onClick={toggleSidebar}
-          aria-label="Expand sidebar"
-          title="Expand sidebar (Ctrl+B)"
-        >
-          <PanelLeftOpen size={15} />
-        </button>
-      )}
+      <button
+        type="button"
+        className={`sidebar-toggle-btn ${sidebarCollapsed ? "collapsed sidebar-expand-btn" : ""}`}
+        onClick={toggleSidebar}
+        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={sidebarCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+      >
+        {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+      </button>
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`} suppressHydrationWarning>
-        <div className="sidebar-top">
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            onClick={toggleSidebar}
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar (Ctrl+B)"
-          >
-            <PanelLeftClose size={18} />
-          </button>
-        </div>
+        <div className="sidebar-top" />
         <button
           className="new-chat"
           onClick={() => {

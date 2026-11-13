@@ -127,7 +127,7 @@ button:hover:not(:disabled) {
   -webkit-backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
-  padding: 20px 18px 0;
+  padding: 12px 16px 0;
   height: 100dvh;
   position: sticky;
   top: 0;
@@ -149,35 +149,43 @@ button:hover:not(:disabled) {
 .sidebar-top {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  height: 30px;
   width: 100%;
+  flex-shrink: 0;
 }
 .sidebar-toggle-btn {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 600;
   background: transparent;
-  border: none;
-  color: #7b828d;
-  cursor: pointer;
-  padding: 6px;
+  border: 1px solid transparent;
+  color: #8c8b85;
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s, background 0.15s;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 .sidebar-toggle-btn:hover {
-  color: #f1f3f5;
+  color: #ffffff;
   background: #222222;
+  border-color: #333333;
 }
+.sidebar-toggle-btn.collapsed,
 .sidebar-expand-btn {
   position: fixed;
-  top: 10px;
+  top: 12px;
   left: 16px;
-  z-index: 60;
+  z-index: 600;
   background: #1c1c1c;
   border: 1px solid #333333;
   color: #a09e97;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -185,6 +193,7 @@ button:hover:not(:disabled) {
   cursor: pointer;
   transition: all 0.15s ease;
 }
+.sidebar-toggle-btn.collapsed:hover,
 .sidebar-expand-btn:hover {
   color: #ffffff;
   border-color: #4a4a4a;
@@ -3043,7 +3052,7 @@ button:hover:not(:disabled) {
     transform: translateX(0);
     opacity: 1 !important;
     pointer-events: auto !important;
-    padding: 24px 16px 20px !important;
+    padding: 12px 16px 20px !important;
     display: flex !important;
     flex-direction: column !important;
     overflow-y: auto !important;
@@ -3056,9 +3065,9 @@ button:hover:not(:disabled) {
   }
   .sidebar-top {
     display: flex !important;
-    justify-content: flex-end !important;
-    align-items: center !important;
+    height: 30px !important;
     width: 100% !important;
+    flex-shrink: 0 !important;
   }
   .brand {
     display: none !important;
