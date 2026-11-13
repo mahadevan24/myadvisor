@@ -475,45 +475,59 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [entry, setEntry] = useState<Entry | null>(null);
   const [botPickerOpen, setBotPickerOpen] = useState(false);
+  const [botPickerSearch, setBotPickerSearch] = useState("");
   const botPickerRef = useRef<HTMLDivElement>(null);
   const [dropDirection, setDropDirection] = useState<"up" | "down">("up");
   const [maxDropHeight, setMaxDropHeight] = useState<number>(320);
 
+  const updatePickerPosition = () => {
+    if (!botPickerRef.current) return;
+    const rect = botPickerRef.current.getBoundingClientRect();
+    const headerEl = document.querySelector(".chat-top-header, .topbar");
+    const headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 0;
+    const topSafeEdge = Math.max(headerBottom + 10, 16);
+    const bottomSafeEdge = window.innerHeight - 16;
+
+    const safeSpaceAbove = Math.max(0, rect.top - 8 - topSafeEdge);
+    const safeSpaceBelow = Math.max(0, bottomSafeEdge - (rect.bottom + 8));
+
+    let direction: "up" | "down" = "up";
+    let calculatedMaxHeight = 320;
+
+    if (safeSpaceAbove < 180 && safeSpaceBelow > safeSpaceAbove) {
+      direction = "down";
+      calculatedMaxHeight = Math.max(120, Math.min(380, safeSpaceBelow));
+    } else if (safeSpaceAbove >= safeSpaceBelow) {
+      direction = "up";
+      calculatedMaxHeight = Math.max(120, Math.min(380, safeSpaceAbove));
+    } else {
+      direction = "down";
+      calculatedMaxHeight = Math.max(120, Math.min(380, safeSpaceBelow));
+    }
+
+    setDropDirection(direction);
+    setMaxDropHeight(calculatedMaxHeight);
+  };
+
   function toggleBotPicker() {
-    if (!botPickerOpen && botPickerRef.current) {
-      const rect = botPickerRef.current.getBoundingClientRect();
-      const spaceAbove = rect.top;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow >= 350 || spaceBelow > spaceAbove) {
-        setDropDirection("down");
-        setMaxDropHeight(Math.max(140, Math.min(360, spaceBelow - 20)));
-      } else {
-        setDropDirection("up");
-        setMaxDropHeight(Math.max(140, Math.min(360, spaceAbove - 20)));
-      }
+    if (!botPickerOpen) {
+      setBotPickerSearch("");
+      updatePickerPosition();
+    } else {
+      setBotPickerSearch("");
     }
     setBotPickerOpen((v) => !v);
   }
 
   useEffect(() => {
     if (!botPickerOpen) return;
-    function updateDropdownPosition() {
-      if (botPickerRef.current) {
-        const rect = botPickerRef.current.getBoundingClientRect();
-        const spaceAbove = rect.top;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        if (spaceBelow >= 350 || spaceBelow > spaceAbove) {
-          setDropDirection("down");
-          setMaxDropHeight(Math.max(140, Math.min(360, spaceBelow - 20)));
-        } else {
-          setDropDirection("up");
-          setMaxDropHeight(Math.max(140, Math.min(360, spaceAbove - 20)));
-        }
-      }
-    }
-    updateDropdownPosition();
-    window.addEventListener("resize", updateDropdownPosition);
-    return () => window.removeEventListener("resize", updateDropdownPosition);
+    updatePickerPosition();
+    window.addEventListener("resize", updatePickerPosition);
+    window.addEventListener("scroll", updatePickerPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePickerPosition);
+      window.removeEventListener("scroll", updatePickerPosition, true);
+    };
   }, [botPickerOpen]);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -526,6 +540,7 @@ export default function Home() {
     function handleClickOutside(e: MouseEvent | TouchEvent) {
       if (botPickerRef.current && !botPickerRef.current.contains(e.target as Node)) {
         setBotPickerOpen(false);
+        setBotPickerSearch("");
       }
     }
     if (botPickerOpen) {
@@ -547,6 +562,27 @@ export default function Home() {
     }
     return groups;
   }, [workspace.bots]);
+
+  const filteredDropdownBots = useMemo(() => {
+    const q = botPickerSearch.trim().toLowerCase();
+    if (!q) return groupedBots;
+    const filtered: Record<string, Bot[]> = {};
+    for (const [cat, botsInCat] of Object.entries(groupedBots)) {
+      const catMatches = cat.toLowerCase().includes(q);
+      const matchingBots = botsInCat.filter(
+        (b) =>
+          catMatches ||
+          b.name.toLowerCase().includes(q) ||
+          (b.description && b.description.toLowerCase().includes(q)) ||
+          (b.category && b.category.toLowerCase().includes(q)) ||
+          (b.model && b.model.toLowerCase().includes(q))
+      );
+      if (matchingBots.length > 0) {
+        filtered[cat] = matchingBots;
+      }
+    }
+    return filtered;
+  }, [groupedBots, botPickerSearch]);
 
   function importBotsList(botsToImport: Bot[]) {
     try {
@@ -1344,6 +1380,7 @@ export default function Home() {
   }, [chatId]);
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key === "Escape") {
+      if (botPickerOpen) { setBotPickerOpen(false); setBotPickerSearch(""); return; }
       if (modelPicker) { setModelPicker(null); return; }
       setSettings(false);
       setEditor(null);
