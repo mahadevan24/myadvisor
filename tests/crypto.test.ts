@@ -7,6 +7,7 @@ import {
   bytesToBase64,
   base64ToBytes,
   generateEncryptionKey,
+  getAccountEncryptionKey,
 } from "../src/lib/crypto";
 import type { Workspace } from "../src/lib/memory";
 
@@ -116,4 +117,17 @@ test("bytesToBase64 and base64ToBytes handle arbitrary binary buffers correctly"
   const b64 = bytesToBase64(sample);
   const decoded = base64ToBytes(b64);
   assert.deepEqual(decoded, sample);
+});
+
+test("account-derived encryption key allows multi-device workspace sync across desktop and mobile", async () => {
+  const uid = "firebase-user-12345";
+  const desktopKey = getAccountEncryptionKey(uid);
+  const mobileKey = getAccountEncryptionKey(uid);
+
+  assert.equal(desktopKey, mobileKey, "Account-derived key must be identical across devices for the same user");
+
+  const desktopEncrypted = await encryptWorkspace(mockWorkspace, desktopKey);
+  const mobileDecrypted = await decryptWorkspace(desktopEncrypted, mobileKey);
+
+  assert.deepEqual(mobileDecrypted, mockWorkspace, "Mobile device must seamlessly decrypt desktop workspace");
 });

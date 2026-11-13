@@ -468,6 +468,29 @@ test("mergeBots preserves custom imported bots and avoids losing bots during clo
   assert.equal(names.length, new Set(names).size);
 });
 
+test("mergeBots respects deletedBotIds and prevents resurrecting deleted default bots like Nova and Echo", () => {
+  const customBot: Bot = {
+    id: "bot-custom-3",
+    name: "Strategy Mentor",
+    category: "Strategy",
+    description: "Business strategy advisor",
+    instructions: "Think in terms of moats and competitive advantages.",
+    model: "openai/gpt-4o-mini",
+    color: "amber",
+    symbol: "♟",
+  };
+
+  // User deleted Nova and Echo
+  const deletedIds = ["nova", "echo"];
+  const currentBots = [customBot];
+  const cloudBots = [customBot, initialWorkspace.bots[0]]; // cloud had nova from earlier
+
+  const merged = mergeBots(cloudBots, currentBots, deletedIds);
+  assert.ok(!merged.some((b) => b.id === "nova"), "Nova must not be present when deleted");
+  assert.ok(!merged.some((b) => b.id === "echo"), "Echo must not be present when deleted");
+  assert.ok(merged.some((b) => b.id === "bot-custom-3"), "Custom bot must be preserved");
+});
+
 test("context management bounds token usage by trimming heavy attachments on older turns", () => {
   const multiTurnChat: Chat = {
     ...chat,
