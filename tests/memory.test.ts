@@ -19,6 +19,8 @@ import {
   stripTodoActionTags,
   parseTodoActions,
   applyTodoActions,
+  isProductivityBot,
+  getGreetingInstruction,
   type Bot,
   type Chat,
   type Entry,
@@ -335,16 +337,25 @@ test("retrieval on greeting returns most recent bot entries for grounding life j
   assert.ok(results.every((r) => r.botId === "nova"));
 });
 
-test("buildContext instructs bot to ask about user life journey / recent progress based on memory", () => {
+test("buildContext instructs only productivity and self-improvement bots to ask about goals, while other bots like Osho behave as they are", () => {
+  const prodBot = CURATED_BOTS.find((b) => b.category === "Productivity and self-improvement")!;
+  const oshoBot = CURATED_BOTS.find((b) => b.id === "osho")!;
+  const novaBot = initialWorkspace.bots[0];
+
+  assert.ok(isProductivityBot(prodBot));
+  assert.equal(isProductivityBot(oshoBot), false);
+  assert.equal(isProductivityBot(novaBot), false);
+
   const chatWithHi: Chat = {
     ...chat,
+    botId: prodBot.id,
     messages: [{ id: "1", role: "user", content: "hi" }],
   };
 
   const entries: Entry[] = [
     {
       id: "journey-note",
-      botId: "nova",
+      botId: prodBot.id,
       chatId: "prior-chat",
       title: "Career transition",
       content: "Transitioning to senior product engineering role",
@@ -352,16 +363,48 @@ test("buildContext instructs bot to ask about user life journey / recent progres
     },
   ];
 
-  const { messages, sources } = buildContext(chatWithHi, initialWorkspace.bots[0], entries);
-  const systemPrompt = messages[0].content as string;
+  // 1. Productivity bot receives the goal accountability greeting instruction
+  const { messages: prodMessages, sources } = buildContext(chatWithHi, prodBot, entries);
+  const prodSystemPrompt = prodMessages[0].content as string;
 
   assert.equal(sources.length, 1);
   assert.equal(sources[0].title, "Career transition");
-  assert.ok(systemPrompt.includes("RETRIEVED WIKI NOTES"));
-  assert.ok(systemPrompt.includes("Career transition"));
-  assert.ok(systemPrompt.includes("harsh in truth"));
-  assert.ok(systemPrompt.includes("goals"));
-  assert.ok(systemPrompt.includes("life journey"));
+  assert.ok(prodSystemPrompt.includes("RETRIEVED WIKI NOTES"));
+  assert.ok(prodSystemPrompt.includes("Career transition"));
+  assert.ok(prodSystemPrompt.includes("harsh in truth"));
+  assert.ok(prodSystemPrompt.includes("goals"));
+  assert.ok(prodSystemPrompt.includes("life journey"));
+
+  // 2. Osho does NOT receive the goal accountability prompt and behaves as Osho
+  const oshoChat: Chat = {
+    ...chat,
+    botId: oshoBot.id,
+    messages: [{ id: "1", role: "user", content: "hi" }],
+  };
+  const { messages: oshoMessages } = buildContext(oshoChat, oshoBot, []);
+  const oshoSystemPrompt = oshoMessages[0].content as string;
+
+  assert.ok(oshoSystemPrompt.includes("You are Osho"));
+  assert.ok(!oshoSystemPrompt.includes("When the user greets you"));
+  assert.ok(!oshoSystemPrompt.includes("harsh in truth"));
+  assert.ok(!oshoSystemPrompt.includes("Directly demand concrete updates on their ongoing goals"));
+  assert.ok(!oshoSystemPrompt.includes("challenge them to state their primary goals"));
+  assert.ok(!oshoSystemPrompt.includes("what they promised to achieve versus what they actually did"));
+
+  // 3. Nova (General) also behaves naturally without goal interrogation
+  const novaChat: Chat = {
+    ...chat,
+    botId: novaBot.id,
+    messages: [{ id: "1", role: "user", content: "hi" }],
+  };
+  const { messages: novaMessages } = buildContext(novaChat, novaBot, []);
+  const novaSystemPrompt = novaMessages[0].content as string;
+
+  assert.ok(novaSystemPrompt.includes("You are Nova"));
+  assert.ok(!novaSystemPrompt.includes("When the user greets you"));
+  assert.ok(!novaSystemPrompt.includes("harsh in truth"));
+  assert.ok(!novaSystemPrompt.includes("Directly demand concrete updates on their ongoing goals"));
+  assert.ok(!novaSystemPrompt.includes("challenge them to state their primary goals"));
 });
 
 test("buildContext includes current date, time, and year in temporal context", () => {
