@@ -3,14 +3,15 @@
 import { useEffect, useRef } from "react";
 
 interface Star {
-  r: number; // orbital radius from celestial rotation center
-  baseAngle: number; // base angular position on celestial sphere [0, 2PI)
+  x: number;
+  y: number;
   size: number; // visual radius in px (distant pinpoint starlight)
   baseAlpha: number; // apparent luminosity
   twinkleSpeed: number; // subtle scintillation rate
   twinklePhase: number; // current phase
   color: string; // stellar spectrum color
   isAnchor: boolean; // navigational anchor star
+  speedMultiplier: number; // celestial orbital drift speed factor
 }
 
 interface ShootingStar {
@@ -159,29 +160,24 @@ export default function SpaceBackground() {
       };
     }
 
+    // Orbital movement settings
+    // Stars sky and Moon drift together along the orbital trajectory (~18 degree angle)
+    const orbitalAngle = (18 * Math.PI) / 180;
+    const baseOrbitalSpeed = 0.24; // Smooth, visible celestial drift speed
+    const dirX = Math.cos(orbitalAngle);
+    const dirY = Math.sin(orbitalAngle);
+
+    const moonBaseSpeed = 0.38;
     let moon: MoonState = {
       active: false,
       x: -moonRadius * 2,
       y: 120,
       radius: moonRadius,
-      vx: 0.36,
-      vy: 0.12,
+      vx: dirX * moonBaseSpeed,
+      vy: dirY * moonBaseSpeed,
       alpha: 0,
-      nextAppearanceTime: performance.now() + 6000, // Starts first pass in ~6 seconds
+      nextAppearanceTime: performance.now() + 5000, // Starts first pass in ~5 seconds
     };
-
-    // Orbital movement settings
-    // Stars are distant celestial objects; they move together as a single unified sky
-    // orbiting around an off-screen celestial center (celestial pole).
-    // Because stars are light-years away, all stars share the exact same angular velocity,
-    // preserving constellation shapes and eliminating artificial depth parallax.
-    let skyAngle = 0;
-
-    // Center of celestial rotation: placed off-screen to upper-left for a gentle orbital arc
-    const getCelestialCenter = () => ({
-      cx: width * 0.25,
-      cy: -height * 0.55,
-    });
 
     // Color palettes for stars: authentic stellar temperature classes
     const starColors = [
@@ -209,62 +205,51 @@ export default function SpaceBackground() {
     }
 
     function initStars() {
-      const { cx, cy } = getCelestialCenter();
-
-      // Calculate maximum distance to corners of the screen to encompass full rotation
-      const d1 = Math.hypot(0 - cx, 0 - cy);
-      const d2 = Math.hypot(width - cx, 0 - cy);
-      const d3 = Math.hypot(0 - cx, height - cy);
-      const d4 = Math.hypot(width - cx, height - cy);
-      const rMax = Math.max(d1, d2, d3, d4) + 60;
-      const rMin = Math.max(0, -cy - 60);
-
-      const rMinSq = rMin * rMin;
-      const rMaxSq = rMax * rMax;
-
       // Natural sky density calibrated to viewport area
       const screenArea = width * height;
-      const annulusArea = Math.PI * (rMaxSq - rMinSq);
-      const desiredOnScreen = Math.max(200, Math.floor(screenArea / 4000));
-      const totalCount = Math.floor(desiredOnScreen * (annulusArea / screenArea));
+      const count = Math.max(220, Math.floor(screenArea / 3600));
 
       stars = [];
-      for (let i = 0; i < totalCount; i++) {
-        // Uniform spatial distribution across celestial annulus
-        const r = Math.sqrt(rMinSq + Math.random() * (rMaxSq - rMinSq));
-        const baseAngle = Math.random() * Math.PI * 2;
+      for (let i = 0; i < count; i++) {
+        const x = Math.random() * width;
+        const y = Math.random() * height;
 
         const rand = Math.random();
         let size: number;
         let baseAlpha: number;
         let isAnchor = false;
+        let speedMultiplier = 1.0;
 
         if (rand > 0.96) {
           // Prominent navigational anchor stars (~4%) - crisp, slightly brighter
           isAnchor = true;
-          size = 1.25 + Math.random() * 0.35; // 1.25 to 1.6px
-          baseAlpha = 0.75 + Math.random() * 0.2; // 0.75 to 0.95
-        } else if (rand > 0.78) {
-          // Medium stars (~18%)
-          size = 0.85 + Math.random() * 0.35; // 0.85 to 1.2px
-          baseAlpha = 0.45 + Math.random() * 0.25; // 0.45 to 0.70
+          size = 1.3 + Math.random() * 0.4;
+          baseAlpha = 0.8 + Math.random() * 0.2;
+          speedMultiplier = 1.12;
+        } else if (rand > 0.76) {
+          // Medium stars (~20%)
+          size = 0.9 + Math.random() * 0.35;
+          baseAlpha = 0.5 + Math.random() * 0.25;
+          speedMultiplier = 1.0;
         } else {
-          // Distant background stars (~78%) - fine pinpoint starlight
-          size = 0.45 + Math.random() * 0.35; // 0.45 to 0.80px
-          baseAlpha = 0.22 + Math.random() * 0.28; // 0.22 to 0.50
+          // Distant background stars (~76%) - fine pinpoint starlight
+          size = 0.5 + Math.random() * 0.35;
+          baseAlpha = 0.25 + Math.random() * 0.25;
+          speedMultiplier = 0.9;
         }
 
         const colorBase = starColors[Math.floor(Math.random() * starColors.length)];
 
         stars.push({
-          r,
-          baseAngle,
+          x,
+          y,
           size,
           baseAlpha,
           twinkleSpeed: 0.006 + Math.random() * 0.014,
           twinklePhase: Math.random() * Math.PI * 2,
           color: colorBase,
           isAnchor,
+          speedMultiplier,
         });
       }
     }
@@ -323,23 +308,9 @@ export default function SpaceBackground() {
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // 2. Celestial orbital motion & subtle cosmic nebulae
-      const { cx, cy } = getCelestialCenter();
-      const rCenter = Math.hypot(width * 0.5 - cx, height * 0.5 - cy);
-
-      // Stars are distant objects: mostly fixed to the eye, but as a sky they move like orbiting.
-      // Angular velocity produces ~1.1px/s tangential motion at screen center (~0.018 px/frame at 60fps)
-      const orbitalAngularSpeed = 0.018 / rCenter;
-      skyAngle += orbitalAngularSpeed * deltaFactor;
-      if (skyAngle > Math.PI * 2) {
-        skyAngle -= Math.PI * 2;
-      }
-
-      // Interstellar nebulae anchored to celestial sky
-      const neb1Angle = Math.PI * 0.32 + skyAngle;
-      const neb1Dist = rCenter * 0.92;
-      const nebula1X = cx + neb1Dist * Math.cos(neb1Angle);
-      const nebula1Y = cy + neb1Dist * Math.sin(neb1Angle);
+      // 2. Cosmic nebulae gently breathing in deep space
+      const nebula1X = width * 0.75 + Math.cos(currentTime * 0.0001) * 50;
+      const nebula1Y = height * 0.25 + Math.sin(currentTime * 0.0001) * 30;
       const neb1 = ctx.createRadialGradient(nebula1X, nebula1Y, 10, nebula1X, nebula1Y, width * 0.55);
       neb1.addColorStop(0, "rgba(90, 52, 40, 0.055)");
       neb1.addColorStop(0.5, "rgba(65, 38, 30, 0.025)");
@@ -347,10 +318,8 @@ export default function SpaceBackground() {
       ctx.fillStyle = neb1;
       ctx.fillRect(0, 0, width, height);
 
-      const neb2Angle = Math.PI * 0.58 + skyAngle;
-      const neb2Dist = rCenter * 1.15;
-      const nebula2X = cx + neb2Dist * Math.cos(neb2Angle);
-      const nebula2Y = cy + neb2Dist * Math.sin(neb2Angle);
+      const nebula2X = width * 0.2 + Math.sin(currentTime * 0.00008) * 40;
+      const nebula2Y = height * 0.8 + Math.cos(currentTime * 0.00008) * 25;
       const neb2 = ctx.createRadialGradient(nebula2X, nebula2Y, 10, nebula2X, nebula2Y, width * 0.5);
       neb2.addColorStop(0, "rgba(80, 45, 35, 0.045)");
       neb2.addColorStop(0.6, "rgba(55, 32, 25, 0.018)");
@@ -358,17 +327,30 @@ export default function SpaceBackground() {
       ctx.fillStyle = neb2;
       ctx.fillRect(0, 0, width, height);
 
-      // 3. Render distant celestial stars as a unified orbiting sky
-      const margin = 15;
+      // 3. Render stars sky moving along with moon
+      const margin = 20;
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
 
-        const currentAngle = star.baseAngle + skyAngle;
-        const x = cx + star.r * Math.cos(currentAngle);
-        const y = cy + star.r * Math.sin(currentAngle);
+        // Stars sky moves along with the moon along the orbital trajectory
+        const moveDist = baseOrbitalSpeed * star.speedMultiplier * deltaFactor;
+        star.x += dirX * moveDist;
+        star.y += dirY * moveDist;
+
+        // Wrap around smoothly across margins
+        if (star.x > width + margin) {
+          star.x = -margin;
+        } else if (star.x < -margin) {
+          star.x = width + margin;
+        }
+        if (star.y > height + margin) {
+          star.y = -margin;
+        } else if (star.y < -margin) {
+          star.y = height + margin;
+        }
 
         // Fast viewport boundary culling
-        if (x < -margin || x > width + margin || y < -margin || y > height + margin) {
+        if (star.x < -margin || star.x > width + margin || star.y < -margin || star.y > height + margin) {
           continue;
         }
 
@@ -379,14 +361,14 @@ export default function SpaceBackground() {
 
         ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(x, y, star.size, 0, Math.PI * 2);
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
 
         // Subtle starlight diffraction ring only for prominent anchor stars
         if (star.isAnchor && currentAlpha > 0.72) {
           ctx.fillStyle = `${star.color}${(currentAlpha * 0.12).toFixed(3)})`;
           ctx.beginPath();
-          ctx.arc(x, y, star.size * 1.8, 0, Math.PI * 2);
+          ctx.arc(star.x, star.y, star.size * 1.8, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -418,12 +400,13 @@ export default function SpaceBackground() {
           moon.nextAppearanceTime = currentTime + 70000 + Math.random() * 40000;
         }
       } else if (currentTime > moon.nextAppearanceTime && !moon.active) {
-        // Spawn Moon along the orbital plane
+        // Spawn Moon along the orbital plane moving along with stars sky
         moon.active = true;
         moon.x = -moon.radius * 2;
         moon.y = Math.random() * (height * 0.35) + 40;
-        moon.vx = 0.32 + Math.random() * 0.12; // slow majestic orbital drift
-        moon.vy = 0.09 + Math.random() * 0.06;
+        const moonSpeed = 0.34 + Math.random() * 0.08;
+        moon.vx = dirX * moonSpeed;
+        moon.vy = dirY * moonSpeed;
         moon.alpha = 0;
       }
 
