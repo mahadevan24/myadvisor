@@ -1271,28 +1271,89 @@ button:hover:not(:disabled) {
   position: absolute;
   left: 0;
   right: auto;
-  min-width: 280px;
-  max-width: min(380px, calc(100vw - 32px));
-  max-height: 340px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  min-width: 290px;
+  max-width: min(390px, calc(100vw - 32px));
   background: #1e1f20;
   border: 1px solid #3c4046;
   border-radius: 14px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.composer-bot-dropdown.open-up {
+  bottom: calc(100% + 8px);
+  top: auto;
+}
+.composer-bot-dropdown.open-down {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+.composer-bot-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #2d3137;
+  background: #1e1f20;
+  flex-shrink: 0;
+}
+.composer-bot-search-icon {
+  color: #7b828f;
+  flex-shrink: 0;
+}
+.composer-bot-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f0f0f0;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 2px 0;
+  font-family: inherit;
+}
+.composer-bot-search-input::placeholder {
+  color: #69717c;
+}
+.composer-bot-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: #2b2e33;
+  color: #9aa0a6;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.composer-bot-search-clear:hover {
+  background: #3c4046;
+  color: #e3e3e3;
+}
+.composer-bot-dropdown-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  z-index: 1000;
 }
-.composer-bot-dropdown.open-up {
-  bottom: calc(100% + 10px);
-  top: auto;
-}
-.composer-bot-dropdown.open-down {
-  top: calc(100% + 10px);
-  bottom: auto;
+.composer-bot-empty {
+  padding: 20px 12px;
+  text-align: center;
+  color: #7b828f;
+  font-size: 12px;
 }
 .dropdown-category-group {
   margin-bottom: 6px;
@@ -3197,7 +3258,6 @@ button:hover:not(:disabled) {
     width: min(340px, calc(100vw - 28px)) !important;
     min-width: 0 !important;
     max-width: calc(100vw - 28px) !important;
-    max-height: min(340px, 50dvh) !important;
     z-index: 1100 !important;
   }
   .composer-bot-pill .composer-bot-name {

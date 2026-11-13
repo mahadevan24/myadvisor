@@ -2206,71 +2206,113 @@ export default function Home() {
                   className={`composer-bot-dropdown ${dropDirection === "down" ? "open-down" : "open-up"}`}
                   style={{ maxHeight: `${maxDropHeight}px` }}
                   role="menu"
+                  aria-label="Select bot"
                 >
-                  <div className="dropdown-section-label">CHOOSE BOT BY CATEGORY</div>
-                  {Object.entries(groupedBots).map(([cat, botsInCat]) => (
-                    <div key={cat} className="dropdown-category-group">
-                      <div className="dropdown-category-header">
-                        <span>{cat}</span>
-                        <span className="dropdown-category-count">{botsInCat.length}</span>
-                      </div>
-                      {botsInCat.map((b) => (
-                        <button
-                          key={b.id}
-                          type="button"
-                          role="menuitem"
-                          className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
-                          onClick={() => {
-                            setBotId(b.id);
-                            setBotPickerOpen(false);
-                          }}
-                        >
-                          <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-                          <div className="bot-option-info">
-                            <span className="bot-option-name">{b.name}</span>
-                            <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
-                          </div>
-                          {b.id === defaultBotId && (
-                            <span className="bot-option-default" title="Default bot">
-                              <Star size={11} fill="currentColor" />
-                            </span>
-                          )}
-                          {b.id === bot.id && <Check size={14} className="bot-option-check" />}
-                        </button>
-                      ))}
+                  <div className="composer-bot-search-wrap">
+                    <Search size={13} className="composer-bot-search-icon" />
+                    <input
+                      type="text"
+                      className="composer-bot-search-input"
+                      placeholder="Search bot or category..."
+                      value={botPickerSearch}
+                      onChange={(e) => setBotPickerSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      aria-label="Search bot or category"
+                      autoFocus
+                    />
+                    {botPickerSearch && (
+                      <button
+                        type="button"
+                        className="composer-bot-search-clear"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBotPickerSearch("");
+                        }}
+                        aria-label="Clear search"
+                        title="Clear search"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="composer-bot-dropdown-scroll">
+                    <div className="dropdown-section-label">
+                      {botPickerSearch.trim() ? "SEARCH RESULTS" : "CHOOSE BOT BY CATEGORY"}
                     </div>
-                  ))}
-                  <div className="dropdown-divider" />
-                  <div className="dropdown-footer-actions">
-                    <button
-                      type="button"
-                      className="composer-bot-create-btn"
-                      onClick={() => {
-                        setBotPickerOpen(false);
-                        setEditor({
-                          id: uid(),
-                          name: "",
-                          category: "Business and entrepreneurship",
-                          description: "",
-                          instructions: "",
-                          model: "openai/gpt-4o-mini",
-                          color: "mint",
-                          symbol: "✳",
-                        });
-                      }}
-                    >
-                      <Plus size={14} /> Create bot
-                    </button>
-                    <button
-                      type="button"
-                      className="composer-bot-create-btn"
-                      onClick={() => {
-                        setBotPickerOpen(false);
-                        setImportModalOpen(true);
-                      }}
-                    >
-                      <Upload size={14} /> Import bots
-                    </button>
+                    {Object.keys(filteredDropdownBots).length === 0 ? (
+                      <div className="composer-bot-empty">
+                        <span>No bots or categories found</span>
+                      </div>
+                    ) : (
+                      Object.entries(filteredDropdownBots).map(([cat, botsInCat]) => (
+                        <div key={cat} className="dropdown-category-group">
+                          <div className="dropdown-category-header">
+                            <span>{cat}</span>
+                            <span className="dropdown-category-count">{botsInCat.length}</span>
+                          </div>
+                          {botsInCat.map((b) => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              role="menuitem"
+                              className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
+                              onClick={() => {
+                                setBotId(b.id);
+                                setBotPickerOpen(false);
+                                setBotPickerSearch("");
+                              }}
+                            >
+                              <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                              <div className="bot-option-info">
+                                <span className="bot-option-name">{b.name}</span>
+                                <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
+                              </div>
+                              {b.id === defaultBotId && (
+                                <span className="bot-option-default" title="Default bot">
+                                  <Star size={11} fill="currentColor" />
+                                </span>
+                              )}
+                              {b.id === bot.id && <Check size={14} className="bot-option-check" />}
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    )}
+                    <div className="dropdown-divider" />
+                    <div className="dropdown-footer-actions">
+                      <button
+                        type="button"
+                        className="composer-bot-create-btn"
+                        onClick={() => {
+                          setBotPickerOpen(false);
+                          setBotPickerSearch("");
+                          setEditor({
+                            id: uid(),
+                            name: "",
+                            category: "Business and entrepreneurship",
+                            description: "",
+                            instructions: "",
+                            model: "openai/gpt-4o-mini",
+                            color: "mint",
+                            symbol: "✳",
+                          });
+                        }}
+                      >
+                        <Plus size={14} /> Create bot
+                      </button>
+                      <button
+                        type="button"
+                        className="composer-bot-create-btn"
+                        onClick={() => {
+                          setBotPickerOpen(false);
+                          setBotPickerSearch("");
+                          setImportModalOpen(true);
+                        }}
+                      >
+                        <Upload size={14} /> Import bots
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
