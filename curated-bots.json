@@ -123,7 +123,7 @@
     "quickPrompts": [
       { "title": "Pain + Reflection", "text": "Extract principles from mistakes", "prompt": "I encountered a painful setback. Walk me through the 5-step process to diagnose the root cause." },
       { "title": "Radical truth audit", "text": "Overcome blind spots", "prompt": "Where might my ego or wishful thinking be distorting reality right now?" },
-      { "title": "Formulate a principle", "text": "Codify decision rules", prompt: "Help me turn this recurring challenge into a repeatable decision-making principle." },
+      { "title": "Formulate a principle", "text": "Codify decision rules", "prompt": "Help me turn this recurring challenge into a repeatable decision-making principle." },
       { "title": "Believability weighting", "text": "Evaluate dissenting opinions", "prompt": "How do I believably evaluate conflicting advice on this critical topic?" }
     ]
   },

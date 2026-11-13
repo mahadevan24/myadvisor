@@ -298,7 +298,16 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
 
     const processWorkspace = (data: any, uid: string): Workspace => {
       if (Array.isArray(data.bots)) {
-        data.bots = data.bots.filter((b: any) => b && b.id !== "nova" && b.name?.toLowerCase().trim() !== "nova");
+        data.bots = data.bots
+          .filter((b: any) => b && b.id !== "nova" && b.name?.toLowerCase().trim() !== "nova")
+          .map((b: any) => {
+            if (b && (b.id === "elon-musk" || b.name?.toLowerCase().trim() === "elon musk")) {
+              if (b.model === "openai/gpt-4o-mini" || uid === "guest" || !uid) {
+                return { ...b, model: "google/gemini-flash-latest" };
+              }
+            }
+            return b;
+          });
       }
       const allDeleted = Array.from(
         new Set([...(Array.isArray(data.deletedBotIds) ? data.deletedBotIds : []), ...storedDeleted]),
@@ -314,7 +323,12 @@ function getStoredWorkspace(preferredUid?: string): { workspace: Workspace; uid:
       const deletedSet = new Set(allDeleted);
       const recovered = recoverCustomBots(deletedSet);
       data.deletedBotIds = allDeleted;
-      data.bots = mergeBots(data.bots, recovered, deletedSet);
+      data.bots = mergeBots(data.bots, recovered, deletedSet).map((b: Bot) =>
+        (b.id === "elon-musk" || b.name?.toLowerCase().trim() === "elon musk") &&
+        (b.model === "openai/gpt-4o-mini" || uid === "guest" || !uid)
+          ? { ...b, model: "google/gemini-flash-latest" }
+          : b
+      );
       data.todos = Array.isArray(data.todos) ? data.todos : [];
       data.files = Array.isArray(data.files) ? data.files : [];
       if (!data.defaultBotId || data.defaultBotId === "nova") {
@@ -410,7 +424,17 @@ function getChatDisplayTitle(chat: Chat, botName?: string): string {
 export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace>(() => {
     const cached = getStoredWorkspace();
-    return cached?.workspace || initialWorkspace;
+    const ws = cached?.workspace || initialWorkspace;
+    const isNewOrGuest = !cached?.uid || cached.uid === "guest";
+    return {
+      ...ws,
+      bots: ws.bots.map((b) =>
+        (b.id === "elon-musk" || b.name?.toLowerCase().trim() === "elon musk") &&
+        (isNewOrGuest || b.model === "openai/gpt-4o-mini")
+          ? { ...b, model: "google/gemini-flash-latest" }
+          : b
+      ),
+    };
   });
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("chat");
@@ -1266,9 +1290,17 @@ export default function Home() {
           localStorage.removeItem("myadvisor.lastAccount");
           const guestCached = getStoredWorkspace("guest");
           if (guestCached) {
-            setWorkspace(guestCached.workspace);
-            const targetDefault = guestCached.workspace.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
-            if (targetDefault && guestCached.workspace.bots.some((b: Bot) => b.id === targetDefault)) {
+            const ws: Workspace = {
+              ...guestCached.workspace,
+              bots: guestCached.workspace.bots.map((b: Bot) =>
+                b.id === "elon-musk" || b.name?.toLowerCase().trim() === "elon musk"
+                  ? { ...b, model: "google/gemini-flash-latest" }
+                  : b
+              ),
+            };
+            setWorkspace(ws);
+            const targetDefault = ws.defaultBotId || localStorage.getItem("myadvisor.defaultBotId");
+            if (targetDefault && ws.bots.some((b: Bot) => b.id === targetDefault)) {
               setDefaultBotId(targetDefault);
               setBotId(targetDefault);
             }
@@ -1459,7 +1491,17 @@ export default function Home() {
     try {
       const cached = getStoredWorkspace();
       if (cached) {
-        setWorkspace(cached.workspace);
+        const isNewOrGuest = !cached.uid || cached.uid === "guest";
+        const ws: Workspace = {
+          ...cached.workspace,
+          bots: cached.workspace.bots.map((b) =>
+            (b.id === "elon-musk" || b.name?.toLowerCase().trim() === "elon musk") &&
+            (isNewOrGuest || b.model === "openai/gpt-4o-mini")
+              ? { ...b, model: "google/gemini-flash-latest" }
+              : b
+          ),
+        };
+        setWorkspace(ws);
         if (cached.uid && cached.uid !== "guest") {
           setCloudUid(cached.uid);
           setSync("Cloud synced");
@@ -2300,7 +2342,10 @@ export default function Home() {
 
   const modelShortName = (() => {
     const m = models.find((mod) => mod.id === bot.model);
-    if (!m) return bot.model.split("/").pop() || "Model";
+    if (!m) {
+      if (bot.model === "google/gemini-flash-latest") return "Gemini Flash Latest";
+      return bot.model.split("/").pop() || "Model";
+    }
     if (m.name.includes(":")) return m.name.split(":")[1].trim();
     return m.name;
   })();

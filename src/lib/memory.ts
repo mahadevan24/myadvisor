@@ -1053,6 +1053,16 @@ export function isCuratedBot(bot: Bot | { id?: string; name?: string }): boolean
   return false;
 }
 
+function normalizeBotModel(b: Bot): Bot {
+  if (
+    (b.id === "elon-musk" || b.name?.toLowerCase().trim() === "elon musk") &&
+    b.model === "openai/gpt-4o-mini"
+  ) {
+    return { ...b, model: "google/gemini-flash-latest" };
+  }
+  return b;
+}
+
 export function mergeBots(
   primary: Bot[],
   secondary: Bot[],
@@ -1060,23 +1070,25 @@ export function mergeBots(
 ): Bot[] {
   const deleted = deletedBotIds instanceof Set ? deletedBotIds : new Set(deletedBotIds || []);
   const map = new Map<string, Bot>();
-  for (const b of primary || []) {
+  for (const raw of primary || []) {
+    const b = raw ? normalizeBotModel(raw) : raw;
     if (b && b.id && !deleted.has(b.id)) {
       map.set(b.id, b);
       if (b.name) map.set(`name:${b.name.toLowerCase().trim()}`, b);
     }
   }
-  for (const b of secondary || []) {
-    if (!b || !b.id || deleted.has(b.id)) continue;
+  for (const raw of secondary || []) {
+    if (!raw || !raw.id || deleted.has(raw.id)) continue;
+    const b = normalizeBotModel(raw);
     const existingById = map.get(b.id);
     const existingByName = b.name ? map.get(`name:${b.name.toLowerCase().trim()}`) : undefined;
     const existing = existingById || existingByName;
     if (existing) {
-      const merged: Bot = {
+      const merged: Bot = normalizeBotModel({
         ...existing,
         ...b,
         quickPrompts: b.quickPrompts?.length ? b.quickPrompts : existing.quickPrompts,
-      };
+      });
       map.set(existing.id, merged);
       if (b.id !== existing.id) map.set(b.id, merged);
     } else {
@@ -1089,7 +1101,7 @@ export function mergeBots(
   for (const b of map.values()) {
     if (!seenIds.has(b.id) && !deleted.has(b.id)) {
       seenIds.add(b.id);
-      result.push(b);
+      result.push(normalizeBotModel(b));
     }
   }
   // Ensure default curated bots are included if missing AND NOT explicitly deleted
@@ -1098,7 +1110,7 @@ export function mergeBots(
     const hasId = seenIds.has(defaultBot.id);
     const hasName = defaultBot.name && result.some((r) => r.name.toLowerCase().trim() === defaultBot.name.toLowerCase().trim());
     if (!hasId && !hasName) {
-      result.push(defaultBot);
+      result.push(normalizeBotModel(defaultBot));
       seenIds.add(defaultBot.id);
     }
   }
