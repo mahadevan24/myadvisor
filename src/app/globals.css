@@ -3,24 +3,24 @@
   --color-accent: #cc785c;
 }
 :root {
-  --bg: #191919;
-  --bg-sidebar: #141414;
-  --panel: #202020;
-  --panel-hover: #262626;
-  --line: #292929;
-  --border: #333333;
-  --muted: #8c8b85;
-  --text: #e6e4df;
-  --text-bright: #faf9f6;
+  --bg: #05060a;
+  --bg-sidebar: rgba(13, 15, 23, 0.78);
+  --panel: rgba(20, 23, 34, 0.82);
+  --panel-hover: rgba(28, 33, 48, 0.88);
+  --line: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.12);
+  --muted: #8d93a0;
+  --text: #e6e9f0;
+  --text-bright: #fafbfe;
   --accent: #cc785c;
   --accent-hover: #d9886d;
-  --user-bubble: #262626;
-  --user-bubble-border: rgba(255, 255, 255, 0.07);
-  --composer-bg: #222222;
-  --composer-border: #363636;
-  --scrollbar-track: #191919;
-  --scrollbar-thumb: #333333;
-  --scrollbar-thumb-hover: #484848;
+  --user-bubble: rgba(30, 34, 48, 0.82);
+  --user-bubble-border: rgba(255, 255, 255, 0.1);
+  --composer-bg: rgba(20, 23, 33, 0.85);
+  --composer-border: rgba(255, 255, 255, 0.12);
+  --scrollbar-track: rgba(5, 6, 10, 0.5);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 }
 * {
   box-sizing: border-box;
@@ -101,17 +101,29 @@ button {
 button:hover:not(:disabled) {
   filter: brightness(1.13);
 }
+.space-star-background {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
 .app-shell {
   display: flex;
   height: 100dvh;
   overflow: hidden;
   position: relative;
+  z-index: 1;
+  background: transparent;
 }
 .sidebar {
   width: 246px;
   flex-shrink: 0;
   border-right: 1px solid var(--line);
   background: var(--bg-sidebar);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
   padding: 31px 18px 0;
@@ -391,6 +403,11 @@ button:hover:not(:disabled) {
 .bot-default-star:hover {
   color: #c1f99a;
 }
+.sidebar-quick-bots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .bot-nav {
   display: flex;
   width: 100%;
@@ -399,6 +416,17 @@ button:hover:not(:disabled) {
   padding: 8px 11px;
   color: #b3b6bd;
   font-size: 12px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+.bot-nav:hover {
+  background: #202020;
+  color: #ffffff;
+}
+.bot-nav.selected {
+  background: #242424;
+  color: #ffffff;
+  font-weight: 500;
 }
 .bot-nav .online-dot {
   margin-left: auto;
@@ -506,6 +534,9 @@ button:hover:not(:disabled) {
   height: 72px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--line);
+  background: rgba(10, 12, 19, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
   justify-content: space-between;
   align-items: center;

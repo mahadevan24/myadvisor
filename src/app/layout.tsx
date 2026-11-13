@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import SpaceBackground from "@/components/SpaceBackground";
 
 export const metadata: Metadata = {
   title: "MyAdvisor — Your second mind",
@@ -21,7 +22,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: "#191919",
+  themeColor: "#05060a",
 };
 
 export default function RootLayout({
@@ -32,7 +33,10 @@ export default function RootLayout({
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body>{children}</body>
+      <body>
+        <SpaceBackground />
+        {children}
+      </body>
     </html>
   );
 }
