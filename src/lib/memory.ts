@@ -39,6 +39,8 @@ export type Chat = {
   summary: string;
   compactedCount: number;
   updatedAt: number;
+  isProactive?: boolean;
+  proactiveRead?: boolean;
 };
 export type Entry = {
   id: string;

@@ -174,6 +174,12 @@ export async function POST(req: Request) {
       }
     }
     if (!upstream.ok) {
+      let upstreamMessage = "";
+      try {
+        const errJson = await upstream.json();
+        upstreamMessage = String(errJson?.error?.message || errJson?.error || "").trim();
+      } catch {}
+
       return Response.json(
         {
           error:
@@ -183,7 +189,9 @@ export async function POST(req: Request) {
                 ? "Your OpenRouter account needs credits."
                 : upstream.status === 429
                   ? "Model rate limit reached. Wait a moment or choose another model."
-                  : `OpenRouter could not complete this request (${upstream.status}). Check your model ID and try again.`,
+                  : upstreamMessage
+                    ? `OpenRouter error (${upstream.status}): ${upstreamMessage}`
+                    : `OpenRouter could not complete this request (${upstream.status}). Check your model ID and try again.`,
         },
         { status: upstream.status },
       );

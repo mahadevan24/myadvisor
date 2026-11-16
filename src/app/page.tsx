@@ -98,6 +98,11 @@ import {
 } from "@/lib/crypto";
 import { readStream } from "@/lib/stream";
 import type { Model } from "@/lib/models";
+import {
+  formatTimeAgo,
+  generateProactiveMessage,
+  shouldBotInitiateProactiveChat,
+} from "@/lib/proactive";
 
 type View = "chat" | "history" | "bots" | "wiki" | "files";
 type CommandResult = { type: "status" } | { type: "error"; message: string };
@@ -438,6 +443,13 @@ function displayTitle(title?: string | null, fallback = "Conversation"): string 
 
 function getChatDisplayTitle(chat: Chat, botName?: string): string {
   if (!chat.title || isGenericTitle(chat.title) || isGreetingTitle(chat.title)) {
+    if (chat.isProactive) {
+      const firstAssistant = chat.messages?.find((m) => m.role === "assistant" && m.content);
+      if (firstAssistant) {
+        return `Proactive: ${firstAssistant.content.slice(0, 45)}…`;
+      }
+      return `Initiative from ${botName || "Advisor"}`;
+    }
     return deriveFallbackTitle(chat.messages, botName, chat.updatedAt);
   }
   return chat.title;
@@ -1719,6 +1731,14 @@ export default function Home() {
     if (!selected) return;
     setChatId(selected.id);
     setBotId(selected.botId);
+    if (selected.isProactive && !selected.proactiveRead) {
+      setWorkspace((w) => ({
+        ...w,
+        chats: w.chats.map((c) =>
+          c.id === selected.id ? { ...c, proactiveRead: true } : c,
+        ),
+      }));
+    }
     setView("chat");
     setSources([]);
     setCurrentRagSources([]);
@@ -1732,6 +1752,68 @@ export default function Home() {
         ? [makeEntry(next), ...w.entries.filter((e) => e.id !== next.id)]
         : w.entries,
     }));
+  }
+
+  const proactiveRunningRef = useRef(false);
+
+  const checkAndInitiateProactiveBots = useEffectEvent(async () => {
+    if (proactiveRunningRef.current || busy || !ready) return;
+    proactiveRunningRef.current = true;
+    try {
+      const top3Bots = recentBots.slice(0, 3);
+      for (const b of top3Bots) {
+        if (shouldBotInitiateProactiveChat(b.id, workspace, chatId)) {
+          const { title, message } = await generateProactiveMessage(b, workspace, {
+            cloudUid,
+            connected,
+          });
+
+          setWorkspace((currentWs) => {
+            if (!shouldBotInitiateProactiveChat(b.id, currentWs, chatId)) {
+              return currentWs;
+            }
+            const proactiveChat: Chat = {
+              id: uid(),
+              botId: b.id,
+              title,
+              messages: [
+                {
+                  id: uid(),
+                  role: "assistant",
+                  content: message,
+                },
+              ],
+              summary: "",
+              compactedCount: 0,
+              updatedAt: Date.now(),
+              isProactive: true,
+              proactiveRead: false,
+            };
+            return {
+              ...currentWs,
+              chats: [proactiveChat, ...currentWs.chats],
+            };
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Proactive check error:", err);
+    } finally {
+      proactiveRunningRef.current = false;
+    }
+  });
+
+  useEffect(() => {
+    if (!ready || busy) return;
+    const timer = setTimeout(() => {
+      checkAndInitiateProactiveBots();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [ready, busy, recentBots, workspace.chats.length]);
+
+  function triggerProactiveCheck() {
+    if (busy) return;
+    checkAndInitiateProactiveBots();
   }
   async function request(
     messages: { role: string; content: any }[],
@@ -2460,7 +2542,9 @@ export default function Home() {
           placeholder={
             pendingAttachments.length > 0
               ? "Add instructions or ask a question…"
-              : "Ask, imagine, let it out anything on your mind..."
+              : chat?.isProactive && chat.messages.length === 1
+                ? `Reply to ${bot.name}…`
+                : "Ask, imagine, let it out anything on your mind..."
           }
           value={input}
           onPaste={handlePaste}
@@ -2758,24 +2842,88 @@ export default function Home() {
             </button>
           ))}
         </nav>
-        <div className="nav-label">QUICK ACCESS</div>
+        <div className="nav-label sidebar-quick-header">
+          <span>RECENT BOTS</span>
+          <button
+            type="button"
+            className="proactive-trigger-btn"
+            title="Ask recent bots for proactive thoughts"
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerProactiveCheck();
+            }}
+            disabled={busy}
+          >
+            <Sparkles size={11} />
+            <span>Proactive</span>
+          </button>
+        </div>
         <div className="sidebar-quick-bots">
-          {recentBots.map((b) => (
-            <button
-              key={b.id}
-              disabled={busy}
-              onClick={() => {
-                newChat(b.id);
-                closeSidebarOnMobile();
-              }}
-              className={`bot-nav ${bot?.id === b.id ? "selected" : ""}`}
-              title={b.name}
-            >
-              <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-              <span className="bot-nav-text">{b.name}</span>
-              <span className="online-dot" />
-            </button>
-          ))}
+          {recentBots.slice(0, 3).map((b) => {
+            const proactiveChat = workspace.chats.find(
+              (c) => c.botId === b.id && c.isProactive && !c.proactiveRead,
+            );
+            return (
+              <div
+                className={`bot-nav-container ${proactiveChat ? "has-proactive" : ""}`}
+                key={b.id}
+              >
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    if (proactiveChat) {
+                      openChat(proactiveChat.id);
+                    } else {
+                      newChat(b.id);
+                    }
+                    closeSidebarOnMobile();
+                  }}
+                  className={`bot-nav ${bot?.id === b.id ? "selected" : ""} ${proactiveChat ? "proactive-nav" : ""}`}
+                  title={
+                    proactiveChat
+                      ? `${b.name} initiated a conversation: click to open`
+                      : b.name
+                  }
+                >
+                  <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                  <span className="bot-nav-text">{b.name}</span>
+                  {proactiveChat && (
+                    <span className="proactive-indicator-badge">
+                      <Sparkles size={10} className="proactive-sparkle-icon" />
+                      <span>New</span>
+                    </span>
+                  )}
+                  <span
+                    className={`online-dot ${proactiveChat ? "proactive-pulse" : ""}`}
+                  />
+                </button>
+                {proactiveChat && (
+                  <div
+                    className="proactive-preview-card"
+                    onClick={() => {
+                      openChat(proactiveChat.id);
+                      closeSidebarOnMobile();
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Open proactive conversation"
+                  >
+                    <div className="proactive-preview-header">
+                      <span className="proactive-preview-tag">
+                        <Sparkles size={10} /> Proactive thought
+                      </span>
+                      <span className="proactive-preview-time">
+                        {formatTimeAgo(proactiveChat.updatedAt)}
+                      </span>
+                    </div>
+                    <div className="proactive-preview-snippet">
+                      {proactiveChat.messages[0]?.content || "Initiated conversation"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="sidebar-bottom">
           <button className="settings-link" onClick={() => {
@@ -2820,6 +2968,14 @@ export default function Home() {
         {view === "chat" && bot ? (
           <div className={`chat-layout ${isChecklistBot && checklistOpen ? "checklist-open" : "checklist-closed"}`}>
             <section className="conversation">
+              {chat?.isProactive && (
+                <div className="proactive-chat-banner">
+                  <Sparkles size={14} className="proactive-banner-icon" />
+                  <span>
+                    Initiated proactively by <strong>{bot.name}</strong> based on previous conversations
+                  </span>
+                </div>
+              )}
               {isChecklistBot && (
                 <header className="chat-top-header">
                   <div className="chat-header-actions">
@@ -3509,7 +3665,12 @@ export default function Home() {
                     return (
                       <button className="entry-card history-card" key={c.id} onClick={() => openChat(c.id)}>
                         <MessageSquare size={21} />
-                        <span className="entry-bot">{botObj?.name || "Bot"} · CONVERSATION</span>
+                        <span className="entry-bot">
+                          {botObj?.name || "Bot"} · {c.isProactive ? "PROACTIVE INITIATIVE" : "CONVERSATION"}
+                          {c.isProactive && !c.proactiveRead && (
+                            <span className="proactive-history-badge">New</span>
+                          )}
+                        </span>
                         <h2>{title}</h2>
                         <p>{snippet}</p>
                         <footer>{new Date(c.updatedAt).toLocaleDateString()} <ArrowUpRight size={16} /></footer>
