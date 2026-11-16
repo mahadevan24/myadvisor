@@ -2466,7 +2466,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!input && inputRef.current) {
-      inputRef.current.style.height = "38px";
+      inputRef.current.style.height = "24px";
     }
   }, [input]);
 
@@ -2481,276 +2481,113 @@ export default function Home() {
   })();
 
   const renderComposer = () => (
-    <form
-      className={`composer-pill ${pendingAttachments.length > 0 ? "has-attachments" : ""}`}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void send();
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.dataTransfer?.files?.length) {
-          void handleFiles(Array.from(e.dataTransfer.files));
-        }
-      }}
-    >
-      {pendingAttachments.length > 0 && (
-        <div className="composer-attachments">
-          {pendingAttachments.map((att) => (
-            <div className="composer-attachment-card" key={att.id}>
-              {att.type.startsWith("image/") ? (
-                <div className="composer-attachment-thumb">
-                  <img src={att.url} alt={att.name} />
-                </div>
-              ) : (
-                <div className="composer-attachment-icon">
-                  <FileText size={16} />
-                </div>
-              )}
-              <div className="composer-attachment-info">
-                <span className="composer-attachment-name" title={att.name}>
-                  {att.name}
-                </span>
-                <span className="composer-attachment-size">
-                  {formatFileSize(att.size)}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="composer-attachment-remove"
-                onClick={() => removeAttachment(att.id)}
-                aria-label={`Remove ${att.name}`}
-                title="Remove attachment"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="composer-row">
-        <textarea
-          ref={inputRef}
-          aria-label="Message"
-          maxLength={12000}
-          rows={1}
-          placeholder={
-            pendingAttachments.length > 0
-              ? "Add instructions or ask a question…"
-              : chat?.isProactive && chat.messages.length === 1
-                ? `Reply to ${bot.name}…`
-                : "Ask, imagine, let it out anything on your mind..."
+    <div className="composer-container">
+      <form
+        className={`composer-pill ${pendingAttachments.length > 0 ? "has-attachments" : ""}`}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send();
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer?.files?.length) {
+            void handleFiles(Array.from(e.dataTransfer.files));
           }
-          value={input}
-          onPaste={handlePaste}
-          onChange={(e) => {
-            setInput(e.target.value);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(160, Math.max(38, e.target.scrollHeight))}px`;
-          }}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        <div className="composer-pill-actions">
-          <div className="composer-actions-left">
-            <button
-              type="button"
-              className="composer-icon-btn attach-btn"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach documents or images"
-              title="Attach documents or images"
-              disabled={busy}
-            >
-              <Plus size={18} />
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={(e) => {
-                if (e.target.files?.length) {
-                  void handleFiles(Array.from(e.target.files));
-                  e.target.value = "";
-                }
-              }}
-              style={{ display: "none" }}
-              multiple
-              accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.md,text/*"
-            />
-            <div className="composer-dropdown-wrap" ref={botPickerRef}>
-              <button
-                type="button"
-                className="composer-bot-pill"
-                disabled={busy}
-                onClick={toggleBotPicker}
-                aria-label={`Choose bot: ${bot.name}`}
-                aria-expanded={botPickerOpen}
-              >
-                <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
-                <span className="composer-bot-name">{bot.name}</span>
-                <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
-              </button>
-              {botPickerOpen && (
-                <div
-                  className={`composer-bot-dropdown ${dropDirection === "down" ? "open-down" : "open-up"}`}
-                  style={{ maxHeight: `${maxDropHeight}px` }}
-                  role="menu"
-                  aria-label="Select bot"
-                >
-                  <div className="composer-bot-search-wrap">
-                    <Search size={13} className="composer-bot-search-icon" />
-                    <input
-                      type="text"
-                      className="composer-bot-search-input"
-                      placeholder="Search bot or category..."
-                      value={botPickerSearch}
-                      onChange={(e) => setBotPickerSearch(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      aria-label="Search bot or category"
-                      autoFocus
-                    />
-                    {botPickerSearch && (
-                      <button
-                        type="button"
-                        className="composer-bot-search-clear"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setBotPickerSearch("");
-                        }}
-                        aria-label="Clear search"
-                        title="Clear search"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
+        }}
+      >
+        {pendingAttachments.length > 0 && (
+          <div className="composer-attachments">
+            {pendingAttachments.map((att) => (
+              <div className="composer-attachment-card" key={att.id}>
+                {att.type.startsWith("image/") ? (
+                  <div className="composer-attachment-thumb">
+                    <img src={att.url} alt={att.name} />
                   </div>
-                  <div className="composer-bot-dropdown-scroll">
-                    <div className="dropdown-section-label">
-                      {botPickerSearch.trim() ? "SEARCH RESULTS" : "CHOOSE BOT BY CATEGORY"}
-                    </div>
-                    {Object.keys(filteredDropdownBots).length === 0 ? (
-                      <div className="composer-bot-empty">
-                        <span>No bots or categories found</span>
-                      </div>
-                    ) : (
-                      Object.entries(filteredDropdownBots).map(([cat, botsInCat]) => (
-                        <div key={cat} className="dropdown-category-group">
-                          <div className="dropdown-category-header">
-                            <span>{cat}</span>
-                            <span className="dropdown-category-count">{botsInCat.length}</span>
-                          </div>
-                          {botsInCat.map((b) => (
-                            <button
-                              key={b.id}
-                              type="button"
-                              role="menuitem"
-                              className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
-                              onClick={() => {
-                                setBotId(b.id);
-                                setBotPickerOpen(false);
-                                setBotPickerSearch("");
-                              }}
-                            >
-                              <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
-                              <div className="bot-option-info">
-                                <span className="bot-option-name">{b.name}</span>
-                                <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
-                              </div>
-                              {b.id === defaultBotId && (
-                                <span className="bot-option-default" title="Default bot">
-                                  <Star size={11} fill="currentColor" />
-                                </span>
-                              )}
-                              {b.id === bot.id && <Check size={14} className="bot-option-check" />}
-                            </button>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                    <div className="dropdown-divider" />
-                    <div className="dropdown-footer-actions">
-                      <button
-                        type="button"
-                        className="composer-bot-create-btn"
-                        onClick={() => {
-                          setBotPickerOpen(false);
-                          setBotPickerSearch("");
-                          setEditor({
-                            id: uid(),
-                            name: "",
-                            category: "Business and entrepreneurship",
-                            description: "",
-                            instructions: "",
-                            model: "openai/gpt-4o-mini",
-                            color: "mint",
-                            symbol: "✳",
-                          });
-                        }}
-                      >
-                        <Plus size={14} /> Create bot
-                      </button>
-                      <button
-                        type="button"
-                        className="composer-bot-create-btn"
-                        onClick={() => {
-                          setBotPickerOpen(false);
-                          setBotPickerSearch("");
-                          setImportModalOpen(true);
-                        }}
-                      >
-                        <Upload size={14} /> Import bots
-                      </button>
-                    </div>
+                ) : (
+                  <div className="composer-attachment-icon">
+                    <FileText size={16} />
                   </div>
+                )}
+                <div className="composer-attachment-info">
+                  <span className="composer-attachment-name" title={att.name}>
+                    {att.name}
+                  </span>
+                  <span className="composer-attachment-size">
+                    {formatFileSize(att.size)}
+                  </span>
                 </div>
-              )}
-            </div>
-            <button
-              type="button"
-              className="composer-model-pill"
-              disabled={busy}
-              onClick={() => openModels("chat")}
-              aria-label={`Choose model: ${bot.model}`}
-            >
-              <span>{modelShortName}</span>
-              <ChevronDown size={13} />
-            </button>
-            <button
-              type="button"
-              className={`composer-mode-pill ${deepThinking ? "active" : ""}`}
-              disabled={busy}
-              onClick={() => setDeepThinking(!deepThinking)}
-              aria-label={deepThinking ? "Thinking mode enabled. Click to switch to Fast mode." : "Fast mode active (1-2s replies). Click to switch to Thinking mode."}
-              title={deepThinking ? "Thinking Mode: Deep analytical reasoning (takes ~5-10s)" : "Fast Mode: Ultra-fast 1-2s replies without thinking lag"}
-            >
-              <Sparkles size={13} className="composer-mode-icon" />
-              <span>{deepThinking ? "Think" : "Fast"}</span>
-            </button>
-            {(workspace.files || []).length > 0 && (
-              <button
-                type="button"
-                className="chat-rag-status-chip"
-                onClick={() => setView("files")}
-                title="Knowledge Base active for all bots. Click to view or manage files."
-              >
-                <FileText size={12} />
-                <span>{(workspace.files || []).filter((f) => f.enabled !== false).length} RAG docs</span>
-              </button>
-            )}
+                <button
+                  type="button"
+                  className="composer-attachment-remove"
+                  onClick={() => removeAttachment(att.id)}
+                  aria-label={`Remove ${att.name}`}
+                  title="Remove attachment"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
           </div>
+        )}
+        <div className="composer-row">
+          <button
+            type="button"
+            className="composer-icon-btn attach-btn"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach documents or images"
+            title="Attach documents or images"
+            disabled={busy}
+          >
+            <Plus size={18} />
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                void handleFiles(Array.from(e.target.files));
+                e.target.value = "";
+              }
+            }}
+            style={{ display: "none" }}
+            multiple
+            accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.md,text/*"
+          />
+          <textarea
+            ref={inputRef}
+            aria-label="Message"
+            maxLength={12000}
+            rows={1}
+            placeholder={
+              pendingAttachments.length > 0
+                ? "Add instructions or ask a question…"
+                : chat?.isProactive && chat.messages.length === 1
+                  ? `Reply to ${bot.name}…`
+                  : "Ask, imagine, let it out anything on your mind..."
+            }
+            value={input}
+            onPaste={handlePaste}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(160, Math.max(24, e.target.scrollHeight))}px`;
+            }}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
           <div className="composer-actions-right">
             {busy ? (
               <button
@@ -2763,6 +2600,7 @@ export default function Home() {
               </button>
             ) : (
               <button
+                type="submit"
                 className="composer-action-btn send"
                 disabled={(!input.trim() && pendingAttachments.length === 0) || !ready}
                 aria-label="Send message"
@@ -2772,8 +2610,174 @@ export default function Home() {
             )}
           </div>
         </div>
+      </form>
+      <div className="composer-foot">
+        <span className="composer-foot-disclaimer">AI can be wrong. Stay curious.</span>
+        <div className="composer-foot-controls">
+          <div className="composer-dropdown-wrap" ref={botPickerRef}>
+            <button
+              type="button"
+              className="composer-bot-pill"
+              disabled={busy}
+              onClick={toggleBotPicker}
+              aria-label={`Choose bot: ${bot.name}`}
+              aria-expanded={botPickerOpen}
+            >
+              <span className={`mini-bot ${bot.color}`}>{bot.symbol}</span>
+              <span className="composer-bot-name">{bot.name}</span>
+              <ChevronDown size={13} className={`dropdown-chevron ${botPickerOpen ? "open" : ""}`} />
+            </button>
+            {botPickerOpen && (
+              <div
+                className={`composer-bot-dropdown ${dropDirection === "down" ? "open-down" : "open-up"}`}
+                style={{ maxHeight: `${maxDropHeight}px` }}
+                role="menu"
+                aria-label="Select bot"
+              >
+                <div className="composer-bot-search-wrap">
+                  <Search size={13} className="composer-bot-search-icon" />
+                  <input
+                    type="text"
+                    className="composer-bot-search-input"
+                    placeholder="Search bot or category..."
+                    value={botPickerSearch}
+                    onChange={(e) => setBotPickerSearch(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    aria-label="Search bot or category"
+                    autoFocus
+                  />
+                  {botPickerSearch && (
+                    <button
+                      type="button"
+                      className="composer-bot-search-clear"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBotPickerSearch("");
+                      }}
+                      aria-label="Clear search"
+                      title="Clear search"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+                <div className="composer-bot-dropdown-scroll">
+                  <div className="dropdown-section-label">
+                    {botPickerSearch.trim() ? "SEARCH RESULTS" : "CHOOSE BOT BY CATEGORY"}
+                  </div>
+                  {Object.keys(filteredDropdownBots).length === 0 ? (
+                    <div className="composer-bot-empty">
+                      <span>No bots or categories found</span>
+                    </div>
+                  ) : (
+                    Object.entries(filteredDropdownBots).map(([cat, botsInCat]) => (
+                      <div key={cat} className="dropdown-category-group">
+                        <div className="dropdown-category-header">
+                          <span>{cat}</span>
+                          <span className="dropdown-category-count">{botsInCat.length}</span>
+                        </div>
+                        {botsInCat.map((b) => (
+                          <button
+                            key={b.id}
+                            type="button"
+                            role="menuitem"
+                            className={`composer-bot-option ${b.id === bot.id ? "selected" : ""}`}
+                            onClick={() => {
+                              setBotId(b.id);
+                              setBotPickerOpen(false);
+                              setBotPickerSearch("");
+                            }}
+                          >
+                            <span className={`mini-bot ${b.color}`}>{b.symbol}</span>
+                            <div className="bot-option-info">
+                              <span className="bot-option-name">{b.name}</span>
+                              <span className="bot-option-desc">{b.description || b.model.split("/").pop()}</span>
+                            </div>
+                            {b.id === defaultBotId && (
+                              <span className="bot-option-default" title="Default bot">
+                                <Star size={11} fill="currentColor" />
+                              </span>
+                            )}
+                            {b.id === bot.id && <Check size={14} className="bot-option-check" />}
+                          </button>
+                        ))}
+                      </div>
+                    ))
+                  )}
+                  <div className="dropdown-divider" />
+                  <div className="dropdown-footer-actions">
+                    <button
+                      type="button"
+                      className="composer-bot-create-btn"
+                      onClick={() => {
+                        setBotPickerOpen(false);
+                        setBotPickerSearch("");
+                        setEditor({
+                          id: uid(),
+                          name: "",
+                          category: "Business and entrepreneurship",
+                          description: "",
+                          instructions: "",
+                          model: "openai/gpt-4o-mini",
+                          color: "mint",
+                          symbol: "✳",
+                        });
+                      }}
+                    >
+                      <Plus size={14} /> Create bot
+                    </button>
+                    <button
+                      type="button"
+                      className="composer-bot-create-btn"
+                      onClick={() => {
+                        setBotPickerOpen(false);
+                        setBotPickerSearch("");
+                        setImportModalOpen(true);
+                      }}
+                    >
+                      <Upload size={14} /> Import bots
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="composer-model-pill"
+            disabled={busy}
+            onClick={() => openModels("chat")}
+            aria-label={`Choose model: ${bot.model}`}
+          >
+            <span>{modelShortName}</span>
+            <ChevronDown size={13} />
+          </button>
+          <button
+            type="button"
+            className={`composer-mode-pill ${deepThinking ? "active" : ""}`}
+            disabled={busy}
+            onClick={() => setDeepThinking(!deepThinking)}
+            aria-label={deepThinking ? "Thinking mode enabled. Click to switch to Fast mode." : "Fast mode active (1-2s replies). Click to switch to Thinking mode."}
+            title={deepThinking ? "Thinking Mode: Deep analytical reasoning (takes ~5-10s)" : "Fast Mode: Ultra-fast 1-2s replies without thinking lag"}
+          >
+            <Sparkles size={13} className="composer-mode-icon" />
+            <span>{deepThinking ? "Think" : "Fast"}</span>
+          </button>
+          {(workspace.files || []).length > 0 && (
+            <button
+              type="button"
+              className="chat-rag-status-chip"
+              onClick={() => setView("files")}
+              title="Knowledge Base active for all bots. Click to view or manage files."
+            >
+              <FileText size={12} />
+              <span>{(workspace.files || []).filter((f) => f.enabled !== false).length} RAG docs</span>
+            </button>
+          )}
+        </div>
       </div>
-    </form>
+    </div>
   );
 
   return (
@@ -3210,9 +3214,6 @@ export default function Home() {
                       </div>
                     )}
                     {renderComposer()}
-                    <div className="composer-foot">
-                      <span>AI can be wrong. Stay curious.</span>
-                    </div>
                   </div>
                 </>
               ) : (
