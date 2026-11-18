@@ -39,4 +39,5 @@ export const chatRequestSchema = z.object({
   max_tokens: z.number().int().min(1).max(131072).optional(),
   plugins: z.array(z.any()).optional(),
   reasoning: reasoningSchema.optional(),
+  provider: z.any().optional(),
 });

@@ -2586,14 +2586,42 @@ button:hover:not(:disabled) {
   border: 1px solid #7f1d1d;
   background: #241215;
   color: #fca5a5;
-  font-size: 11px;
-  padding: 10px 12px;
-  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px 14px;
+  border-radius: 8px;
   margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 9px;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  animation: fadeIn 0.15s ease-out;
+}
+.error-banner-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.error-banner button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  flex-shrink: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+.error-banner button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
 }
 .library {
   flex: 1;

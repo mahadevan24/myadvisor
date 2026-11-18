@@ -38,4 +38,12 @@ test("chat payload schema does not force a 2048 default max_tokens and accepts h
   if (parsedWithLargeMax.success) {
     assert.equal(parsedWithLargeMax.data.max_tokens, 16384);
   }
+
+  const parsedWithProvider = chatRequestSchema.safeParse({
+    model: "x-ai/grok-2",
+    messages: [{ role: "user", content: "Hi" }],
+    stream: true,
+    provider: { allow_fallbacks: true },
+  });
+  assert.equal(parsedWithProvider.success, true);
 });

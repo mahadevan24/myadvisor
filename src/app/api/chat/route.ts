@@ -125,6 +125,9 @@ export async function POST(req: Request) {
       // Default reasoning effort to "high" so models use think mode by default.
       openRouterPayload.reasoning = { effort: "high" };
     }
+    if (!openRouterPayload.provider) {
+      openRouterPayload.provider = { allow_fallbacks: true };
+    }
 
     const postToOpenRouter = async (payload: Record<string, any>) => {
       return fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -143,7 +146,7 @@ export async function POST(req: Request) {
 
     // If the model has mandatory reasoning and rejects effort: "none", or doesn't support reasoning parameters,
     // seamlessly retry without the reasoning block so the request succeeds.
-    if (upstream.status === 400 && openRouterPayload.reasoning) {
+    if ((upstream.status === 400 || upstream.status === 422) && openRouterPayload.reasoning) {
       const errClone = upstream.clone();
       const errJson = await errClone.json().catch(() => null);
       const errMsg = String(errJson?.error?.message || errJson?.error || "").toLowerCase();
@@ -159,7 +162,7 @@ export async function POST(req: Request) {
       }
     }
     // If a model rejects max_tokens as exceeding its context or output limit, retry without max_tokens.
-    if (upstream.status === 400 && openRouterPayload.max_tokens) {
+    if ((upstream.status === 400 || upstream.status === 422) && openRouterPayload.max_tokens) {
       const errClone = upstream.clone();
       const errJson = await errClone.json().catch(() => null);
       const errMsg = String(errJson?.error?.message || errJson?.error || "").toLowerCase();
@@ -173,26 +176,73 @@ export async function POST(req: Request) {
         upstream = await postToOpenRouter(openRouterPayload);
       }
     }
+    // If upstream returns 429 due to transient provider rate limit/spikes, retry once after a short delay
+    if (upstream.status === 429 && !req.signal.aborted) {
+      const errClone = upstream.clone();
+      const errJson = await errClone.json().catch(() => null);
+      const errMsg = String(errJson?.error?.message || "").toLowerCase();
+      if (!errMsg.includes("limit_rpd") && !errMsg.includes("daily")) {
+        await new Promise((r) => setTimeout(r, 1200));
+        if (!req.signal.aborted) {
+          const retryRes = await postToOpenRouter(openRouterPayload);
+          if (retryRes.ok) {
+            upstream = retryRes;
+          }
+        }
+      }
+    }
     if (!upstream.ok) {
       let upstreamMessage = "";
+      let rawDetail = "";
+      let providerName = "";
       try {
         const errJson = await upstream.json();
         upstreamMessage = String(errJson?.error?.message || errJson?.error || "").trim();
+        providerName = String(errJson?.error?.metadata?.provider_name || "").trim();
+        if (errJson?.error?.metadata?.raw) {
+          try {
+            const rawObj =
+              typeof errJson.error.metadata.raw === "string"
+                ? JSON.parse(errJson.error.metadata.raw)
+                : errJson.error.metadata.raw;
+            rawDetail = String(rawObj?.error?.message || rawObj?.message || "").trim();
+          } catch {
+            rawDetail = String(errJson.error.metadata.raw).trim();
+          }
+        }
       } catch {}
 
+      const retryAfter = upstream.headers.get("retry-after");
+      const retryNote = retryAfter ? ` (retry after ${retryAfter}s)` : "";
+
+      let formattedError: string;
+      if (upstream.status === 401) {
+        formattedError = "Your OpenRouter API key is invalid. Update it in Settings.";
+      } else if (upstream.status === 402) {
+        formattedError = "Your OpenRouter account needs credits. Please check your credit balance at openrouter.ai.";
+      } else if (upstream.status === 429) {
+        const isFreeLimit =
+          upstreamMessage.toLowerCase().includes("limit_rpd") ||
+          upstreamMessage.toLowerCase().includes("free") ||
+          rawDetail.toLowerCase().includes("free");
+
+        if (isFreeLimit) {
+          formattedError = `OpenRouter free-tier rate limit reached${retryNote}. Add credits to your OpenRouter account or switch to another model.`;
+        } else if (rawDetail) {
+          formattedError = `Model provider ${providerName ? `(${providerName}) ` : ""}rate limit or capacity reached${retryNote}: ${rawDetail}. Please wait a moment or switch to another model.`;
+        } else if (upstreamMessage && upstreamMessage !== "Provider returned error") {
+          formattedError = `Model rate limit reached${retryNote}: ${upstreamMessage}. Please wait a moment or switch to another model.`;
+        } else {
+          formattedError = `The model provider${providerName ? ` (${providerName})` : ""} is currently at capacity or temporarily rate-limited${retryNote}. This is an upstream provider capacity limit, not your conversation limit. Please wait a moment or switch models.`;
+        }
+      } else if (rawDetail || upstreamMessage) {
+        formattedError = `OpenRouter error (${upstream.status}): ${rawDetail || upstreamMessage}`;
+      } else {
+        formattedError = `OpenRouter could not complete this request (${upstream.status}). Check your model ID and try again.`;
+      }
+
       return Response.json(
-        {
-          error:
-            upstream.status === 401
-              ? "Your OpenRouter key is invalid. Update it in Settings."
-              : upstream.status === 402
-                ? "Your OpenRouter account needs credits."
-                : upstream.status === 429
-                  ? "Model rate limit reached. Wait a moment or choose another model."
-                  : upstreamMessage
-                    ? `OpenRouter error (${upstream.status}): ${upstreamMessage}`
-                    : `OpenRouter could not complete this request (${upstream.status}). Check your model ID and try again.`,
-        },
+        { error: formattedError },
         { status: upstream.status },
       );
     }

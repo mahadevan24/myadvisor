@@ -1607,11 +1607,9 @@ export default function Home() {
           saveCloud(cloudUid, workspace)
             .then(() => {
               setSync("Cloud synced");
-              setError("");
             })
-            .catch((e) => {
+            .catch(() => {
               setSync("Sync failed");
-              setError(e.message);
             });
         }, 900)
       : undefined;
@@ -3204,8 +3202,12 @@ export default function Home() {
                     )}
                     {error && !settings && (
                       <div role="alert" className="error-banner">
-                        {error}
+                        <div className="error-banner-body">
+                          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                          <span>{error}</span>
+                        </div>
                         <button
+                          type="button"
                           aria-label="Dismiss error"
                           onClick={() => setError("")}
                         >
@@ -3221,8 +3223,12 @@ export default function Home() {
                   <div className="hero-composer-box">
                     {error && !settings && (
                       <div role="alert" className="error-banner" style={{ marginBottom: 16 }}>
-                        {error}
+                        <div className="error-banner-body">
+                          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                          <span>{error}</span>
+                        </div>
                         <button
+                          type="button"
                           aria-label="Dismiss error"
                           onClick={() => setError("")}
                         >
