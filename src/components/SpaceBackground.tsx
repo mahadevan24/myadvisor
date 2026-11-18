@@ -5,11 +5,13 @@ import { useEffect, useRef } from "react";
 interface Star {
   x: number;
   y: number;
-  size: number; // visual radius in px (distant pinpoint starlight)
-  baseAlpha: number; // apparent luminosity
+  size: number; // visual radius in px (pinpoint starlight)
+  baseAlpha: number; // apparent luminosity / base magnitude
   color: string; // stellar spectrum color
-  isAnchor: boolean; // navigational anchor star
-  speedMultiplier: number; // celestial orbital drift speed factor
+  twinkleSpeed: number; // organic scintillation frequency (rad/ms)
+  twinklePhase: number; // individual phase offset
+  twinkleDepth: number; // scintillation amplitude
+  isAnchor: boolean; // prominent anchor star with diamond sparkle
 }
 
 interface ShootingStar {
@@ -137,10 +139,8 @@ export default function SpaceBackground() {
       };
     }
 
-    // Orbital movement settings
-    // Stars sky and Moon drift together along the orbital trajectory (~18 degree angle)
+    // Orbital trajectory settings for the Moon
     const orbitalAngle = (18 * Math.PI) / 180;
-    const baseOrbitalSpeed = 0.12; // Smooth, visible celestial drift speed (2x slower)
     const dirX = Math.cos(orbitalAngle);
     const dirY = Math.sin(orbitalAngle);
 
@@ -156,14 +156,68 @@ export default function SpaceBackground() {
       nextAppearanceTime: performance.now() + 5000, // Starts first pass in ~5 seconds
     };
 
-    // Color palettes for stars: authentic stellar temperature classes
-    const starColors = [
-      "rgba(255, 255, 255,", // Pure white (Class A)
-      "rgba(240, 244, 255,", // Diamond starlight (Class B/A)
-      "rgba(215, 235, 255,", // Space blue starlight glow (Class B/O)
-      "rgba(180, 215, 255,", // Deep space blue celestial glow (Class O)
-      "rgba(235, 245, 255,", // Cool diamond starlight (Class A/B)
-    ];
+    function createStar(w: number, h: number): Star {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+
+      const rand = Math.random();
+      let size: number;
+      let baseAlpha: number;
+      let isAnchor = false;
+      let twinkleSpeed: number;
+      let twinkleDepth: number;
+
+      if (rand > 0.95) {
+        // Prominent anchor stars (~5%) - brilliant starlight with diamond sparkle
+        isAnchor = true;
+        size = 1.3 + Math.random() * 0.45;
+        baseAlpha = 0.82 + Math.random() * 0.18;
+        twinkleSpeed = 0.0018 + Math.random() * 0.0022; // ~2.5 - 4.5s organic cycle
+        twinkleDepth = 0.35 + Math.random() * 0.35;
+      } else if (rand > 0.72) {
+        // Medium stars (~23%) - clearly visible, gentle shimmering
+        size = 0.85 + Math.random() * 0.35;
+        baseAlpha = 0.52 + Math.random() * 0.26;
+        twinkleSpeed = 0.0014 + Math.random() * 0.0024;
+        twinkleDepth = 0.32 + Math.random() * 0.33;
+      } else {
+        // Distant background stars (~72%) - fine pinpoint starlight
+        size = 0.45 + Math.random() * 0.35;
+        baseAlpha = 0.22 + Math.random() * 0.28;
+        twinkleSpeed = 0.001 + Math.random() * 0.002;
+        twinkleDepth = 0.38 + Math.random() * 0.38;
+      }
+
+      // Authentic stellar temperature spectrum classes (Harvard spectral system)
+      const colorRand = Math.random();
+      let colorBase: string;
+      if (colorRand < 0.42) {
+        colorBase = "rgba(255, 255, 255,"; // Pure diamond white (Class A - Sirius, Vega)
+      } else if (colorRand < 0.68) {
+        colorBase = "rgba(225, 242, 255,"; // Diamond blue-white (Class B - Rigel, Spica)
+      } else if (colorRand < 0.82) {
+        colorBase = "rgba(195, 225, 255,"; // Celestial space blue (Class O)
+      } else if (colorRand < 0.93) {
+        colorBase = "rgba(255, 250, 235,"; // Soft warm pearl white (Class F/G - Capella, Sun)
+      } else {
+        colorBase = "rgba(255, 230, 195,"; // Pale golden amber (Class K - Arcturus, Aldebaran)
+      }
+
+      return {
+        x,
+        y,
+        size,
+        baseAlpha,
+        color: colorBase,
+        twinkleSpeed,
+        twinklePhase: Math.random() * Math.PI * 2,
+        twinkleDepth,
+        isAnchor,
+      };
+    }
+
+    let prevWidth = 0;
+    let prevHeight = 0;
 
     function resize() {
       if (!canvas) return;
@@ -184,49 +238,34 @@ export default function SpaceBackground() {
     function initStars() {
       // Natural sky density calibrated to viewport area
       const screenArea = width * height;
-      const count = Math.max(220, Math.floor(screenArea / 3600));
+      const count = Math.max(240, Math.floor(screenArea / 3200));
+
+      // If stars already exist on resize, scale their coordinates proportionally
+      // so constellations remain stable and don't scramble
+      if (stars.length > 0 && prevWidth > 0 && prevHeight > 0) {
+        const scaleX = width / prevWidth;
+        const scaleY = height / prevHeight;
+        for (let i = 0; i < stars.length; i++) {
+          stars[i].x *= scaleX;
+          stars[i].y *= scaleY;
+        }
+        while (stars.length < count) {
+          stars.push(createStar(width, height));
+        }
+        if (stars.length > count * 1.25) {
+          stars.length = count;
+        }
+        prevWidth = width;
+        prevHeight = height;
+        return;
+      }
 
       stars = [];
       for (let i = 0; i < count; i++) {
-        const x = Math.random() * width;
-        const y = Math.random() * height;
-
-        const rand = Math.random();
-        let size: number;
-        let baseAlpha: number;
-        let isAnchor = false;
-        let speedMultiplier = 1.0;
-
-        if (rand > 0.96) {
-          // Prominent navigational anchor stars (~4%) - crisp, slightly brighter
-          isAnchor = true;
-          size = 1.3 + Math.random() * 0.4;
-          baseAlpha = 0.8 + Math.random() * 0.2;
-          speedMultiplier = 1.12;
-        } else if (rand > 0.76) {
-          // Medium stars (~20%)
-          size = 0.9 + Math.random() * 0.35;
-          baseAlpha = 0.5 + Math.random() * 0.25;
-          speedMultiplier = 1.0;
-        } else {
-          // Distant background stars (~76%) - fine pinpoint starlight
-          size = 0.5 + Math.random() * 0.35;
-          baseAlpha = 0.25 + Math.random() * 0.25;
-          speedMultiplier = 0.9;
-        }
-
-        const colorBase = starColors[Math.floor(Math.random() * starColors.length)];
-
-        stars.push({
-          x,
-          y,
-          size,
-          baseAlpha,
-          color: colorBase,
-          isAnchor,
-          speedMultiplier,
-        });
+        stars.push(createStar(width, height));
       }
+      prevWidth = width;
+      prevHeight = height;
     }
 
     function createShootingStar(): ShootingStar {
@@ -302,47 +341,52 @@ export default function SpaceBackground() {
       ctx.fillStyle = neb2;
       ctx.fillRect(0, 0, width, height);
 
-      // 3. Render stars sky moving along with moon
-      const margin = 20;
+      // 3. Render authentic sparkling night sky (stationary celestial sphere)
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
 
-        // Stars sky moves along with the moon along the orbital trajectory
-        const moveDist = baseOrbitalSpeed * star.speedMultiplier * deltaFactor;
-        star.x += dirX * moveDist;
-        star.y += dirY * moveDist;
+        // Atmospheric scintillation / organic multi-frequency sparkling
+        const p1 = currentTime * star.twinkleSpeed + star.twinklePhase;
+        const p2 = currentTime * (star.twinkleSpeed * 1.618) + star.twinklePhase * 2.2;
+        const scintillation = Math.sin(p1) * 0.7 + Math.sin(p2) * 0.3; // ranges -1 to 1
 
-        // Wrap around smoothly across margins
-        if (star.x > width + margin) {
-          star.x = -margin;
-        } else if (star.x < -margin) {
-          star.x = width + margin;
-        }
-        if (star.y > height + margin) {
-          star.y = -margin;
-        } else if (star.y < -margin) {
-          star.y = height + margin;
-        }
+        const currentAlpha = Math.max(
+          0.06,
+          Math.min(1, star.baseAlpha * (1 + scintillation * star.twinkleDepth))
+        );
 
-        // Fast viewport boundary culling
-        if (star.x < -margin || star.x > width + margin || star.y < -margin || star.y > height + margin) {
-          continue;
-        }
-
-        // Steady, serene starlight without flickering or blinking
-        const currentAlpha = star.baseAlpha;
-
+        // Pinpoint star core
         ctx.fillStyle = `${star.color}${currentAlpha.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Soft, steady starlight diffraction glow for prominent anchor stars
+        // Starlight glow and diamond diffraction sparkle for prominent anchor stars
         if (star.isAnchor) {
-          ctx.fillStyle = `${star.color}${(currentAlpha * 0.14).toFixed(3)})`;
+          // Soft atmospheric starlight glow
+          const glowAlpha = currentAlpha * 0.16;
+          ctx.fillStyle = `${star.color}${glowAlpha.toFixed(3)})`;
           ctx.beginPath();
-          ctx.arc(star.x, star.y, star.size * 1.8, 0, Math.PI * 2);
+          ctx.arc(star.x, star.y, star.size * 2.2, 0, Math.PI * 2);
           ctx.fill();
+
+          // Delicate 4-point diamond starlight sparkle when scintillation peaks
+          if (scintillation > 0.3) {
+            const peakFactor = (scintillation - 0.3) / 0.7; // 0 to 1
+            const spikeAlpha = peakFactor * currentAlpha * 0.38;
+            const spikeLen = star.size * (3.2 + peakFactor * 2.8);
+
+            ctx.strokeStyle = `${star.color}${spikeAlpha.toFixed(3)})`;
+            ctx.lineWidth = 0.65;
+            ctx.beginPath();
+            // Horizontal diffraction spike
+            ctx.moveTo(star.x - spikeLen, star.y);
+            ctx.lineTo(star.x + spikeLen, star.y);
+            // Vertical diffraction spike
+            ctx.moveTo(star.x, star.y - spikeLen);
+            ctx.lineTo(star.x, star.y + spikeLen);
+            ctx.stroke();
+          }
         }
       }
 
